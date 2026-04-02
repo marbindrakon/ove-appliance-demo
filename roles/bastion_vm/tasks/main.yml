@@ -50,6 +50,7 @@
   openstack.cloud.port:
     cloud: "{{ demo_cloud_name }}"
     name: "{{ project_name }}-bastion-port"
+    network: "{{ project_name }}-bastion"
     security_groups:
       - "{{ default_sg_id }}"
     state: present
