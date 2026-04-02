@@ -24,6 +24,47 @@
     role: "member"
     state: present
 
+- name: Set unlimited quotas on demo project
+  openstack.cloud.quota:
+    cloud: "{{ cloud_name }}"
+    name: "{{ project_name }}"
+    cores: -1
+    ram: -1
+    instances: -1
+    volumes: -1
+    gigabytes: -1
+    floating_ips: -1
+    ports: -1
+
+# Read clouds.yaml here so we can extract the admin username for role assignment
+# without an extra API call (token issue).
+
+- name: Find clouds.yaml path
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ lookup('env', 'HOME') }}/.config/openstack/clouds.yaml"
+    - "/etc/openstack/clouds.yaml"
+  register: clouds_yaml_stat
+
+- name: Set clouds.yaml path fact
+  ansible.builtin.set_fact:
+    clouds_yaml_path: "{{ (clouds_yaml_stat.results | selectattr('stat.exists') | first).item }}"
+
+- name: Read clouds.yaml
+  ansible.builtin.slurp:
+    src: "{{ clouds_yaml_path }}"
+  register: clouds_yaml_raw
+  no_log: true
+
+- name: Assign admin role to current user on demo project
+  openstack.cloud.role_assignment:
+    cloud: "{{ cloud_name }}"
+    user: "{{ (clouds_yaml_raw.content | b64decode | from_yaml).clouds[cloud_name].auth.username }}"
+    project: "{{ project_name }}"
+    role: admin
+    state: present
+
 - name: Get auth URL from cloud config
   ansible.builtin.command:
     cmd: "openstack --os-cloud {{ cloud_name }} catalog show identity -f value -c endpoints"
@@ -31,29 +72,122 @@
   changed_when: false
   when: os_auth_url == ""
 
-- name: Create application credential for sushy user
-  ansible.builtin.command:
-    cmd: >-
-      openstack application credential create
-      --os-auth-url {{ os_auth_url }}
-      --os-username {{ project_name }}-sushy
-      --os-password {{ sushy_password }}
-      --os-project-name {{ project_name }}
-      --os-user-domain-name {{ project_domain }}
-      --os-project-domain-name {{ project_domain }}
-      -f json
-      {{ project_name }}-sushy-credential
-  register: sushy_app_credential_raw
-  changed_when: sushy_app_credential_raw.rc == 0
+- name: Ensure application credential exists for sushy user
+  openstack.cloud.application_credential:
+    auth:
+      auth_url: "{{ os_auth_url }}"
+      username: "{{ project_name }}-sushy"
+      password: "{{ sushy_password }}"
+      project_name: "{{ project_name }}"
+      user_domain_name: "{{ project_domain }}"
+      project_domain_name: "{{ project_domain }}"
+    auth_type: password
+    name: "{{ project_name }}-sushy-credential"
+    state: present
+  register: sushy_app_credential_result
   no_log: true
 
-- name: Parse application credential output
-  ansible.builtin.set_fact:
-    sushy_app_credential: "{{ sushy_app_credential_raw.stdout | from_json }}"
+- name: Write application credential to cache
+  when:
+    - sushy_app_credential_result.application_credential.secret is defined
+    - sushy_app_credential_result.application_credential.secret is not none
+  block:
+    - name: Write application credential id to cache
+      ansible.builtin.copy:
+        content: "{{ sushy_app_credential_result.application_credential.id }}"
+        dest: ".ove-demo-cache/sushy-app-credential-id"
+        mode: '0600'
 
-- name: Store application credential details
+    - name: Write application credential secret to cache
+      ansible.builtin.copy:
+        content: "{{ sushy_app_credential_result.application_credential.secret }}"
+        dest: ".ove-demo-cache/sushy-app-credential-secret"
+        mode: '0600'
+      no_log: true
+
+- name: Read application credential from cache
+  when: >-
+    sushy_app_credential_result.application_credential.secret is not defined
+    or sushy_app_credential_result.application_credential.secret is none
+  block:
+    - name: Read application credential id from cache
+      ansible.builtin.slurp:
+        src: ".ove-demo-cache/sushy-app-credential-id"
+      register: cached_app_cred_id
+
+    - name: Read application credential secret from cache
+      ansible.builtin.slurp:
+        src: ".ove-demo-cache/sushy-app-credential-secret"
+      register: cached_app_cred_secret
+      no_log: true
+
+- name: Store application credential facts from module result
+  when:
+    - sushy_app_credential_result.application_credential.secret is defined
+    - sushy_app_credential_result.application_credential.secret is not none
   ansible.builtin.set_fact:
-    sushy_app_credential_id: "{{ sushy_app_credential.id }}"
-    sushy_app_credential_secret: "{{ sushy_app_credential.secret }}"
+    sushy_app_credential_id: "{{ sushy_app_credential_result.application_credential.id }}"
+    sushy_app_credential_secret: "{{ sushy_app_credential_result.application_credential.secret }}"
     demo_project_name: "{{ project_name }}"
     cacheable: true
+
+- name: Store application credential facts from cache
+  when: >-
+    sushy_app_credential_result.application_credential.secret is not defined
+    or sushy_app_credential_result.application_credential.secret is none
+  ansible.builtin.set_fact:
+    sushy_app_credential_id: "{{ cached_app_cred_id.content | b64decode | trim }}"
+    sushy_app_credential_secret: "{{ cached_app_cred_secret.content | b64decode | trim }}"
+    demo_project_name: "{{ project_name }}"
+    cacheable: true
+
+# --- Create a project-scoped cloud entry in clouds.yaml ---
+
+- name: Write demo project cloud entry to clouds.yaml
+  vars:
+    _existing: "{{ clouds_yaml_raw.content | b64decode | from_yaml }}"
+    _demo_auth: "{{ _existing.clouds[cloud_name].auth | combine({'project_name': project_name, 'project_domain_name': project_domain}) }}"
+    _demo_cloud: "{{ _existing.clouds[cloud_name] | combine({'auth': _demo_auth}) }}"
+    _updated: "{{ _existing | combine({'clouds': {project_name: _demo_cloud}}, recursive=True) }}"
+  ansible.builtin.copy:
+    content: "{{ _updated | to_nice_yaml(indent=2) }}"
+    dest: "{{ clouds_yaml_path }}"
+    mode: '0600'
+  no_log: true
+
+- name: Set demo cloud name fact
+  ansible.builtin.set_fact:
+    demo_cloud_name: "{{ project_name }}"
+    cacheable: true
+
+# --- Security group rules for bastion access ---
+
+- name: Get default security group for demo project
+  openstack.cloud.security_group_info:
+    cloud: "{{ cloud_name }}"
+    name: default
+    project_id: "{{ demo_project.project.id }}"
+  register: sg_list_result
+
+- name: Set default security group ID fact
+  ansible.builtin.set_fact:
+    default_sg_id_result:
+      stdout: "{{ sg_list_result.security_groups[0].id }}"
+
+- name: Allow SSH ingress in default security group
+  openstack.cloud.security_group_rule:
+    cloud: "{{ demo_cloud_name }}"
+    security_group: "{{ default_sg_id_result.stdout | trim }}"
+    protocol: tcp
+    port_range_min: 22
+    port_range_max: 22
+    remote_ip_prefix: 0.0.0.0/0
+    state: present
+
+- name: Allow ICMP ingress in default security group
+  openstack.cloud.security_group_rule:
+    cloud: "{{ demo_cloud_name }}"
+    security_group: "{{ default_sg_id_result.stdout | trim }}"
+    protocol: icmp
+    remote_ip_prefix: 0.0.0.0/0
+    state: present
