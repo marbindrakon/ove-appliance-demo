@@ -51,6 +51,9 @@ ingress_vip: "10.10.0.101"
 sushy_blank_image: "sushy-tools-blank-image"
 sushy_port: 8000
 
+# OVE agent ISO path on the Ansible controller (copied to bastion during site.yml)
+ove_agent_iso_path: "{{ playbook_dir }}/agent-ove.x86_64.iso"
+
 # Networks
 bastion_network_cidr: "10.0.0.0/24"
 trunk_native_cidr: "10.99.0.0/24"
