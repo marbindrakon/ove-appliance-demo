@@ -1,0 +1,4 @@
+[ove_nodes]
+{% for i in range(ove_node_count | int) %}
+{{ project_name }}-{{ ove_node_name_prefix }}-{{ i }}
+{% endfor %}
