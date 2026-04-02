@@ -1,0 +1,9 @@
+clouds:
+  sushy-cloud:
+    auth_type: v3applicationcredential
+    auth:
+      auth_url: "{{ os_auth_url }}"
+      application_credential_id: "{{ sushy_app_credential_id }}"
+      application_credential_secret: "{{ sushy_app_credential_secret }}"
+    region_name: "{{ os_region | default('RegionOne') }}"
+    cacert: /etc/pki/tls/certs/ca-bundle.crt

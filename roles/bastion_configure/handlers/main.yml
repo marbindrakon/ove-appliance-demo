@@ -8,3 +8,9 @@
   ansible.builtin.systemd:
     name: chronyd
     state: restarted
+
+- name: restart sushy-emulators
+  ansible.builtin.systemd:
+    name: sushy-emulators
+    daemon_reload: true
+    state: restarted

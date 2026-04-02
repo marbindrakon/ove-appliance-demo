@@ -1,0 +1,71 @@
+---
+- name: Install sushy-tools prerequisites
+  ansible.builtin.dnf:
+    name:
+      - python3-pip
+      - git
+    state: present
+
+- name: Install sushy-tools and dependencies
+  ansible.builtin.pip:
+    name:
+      - git+https://github.com/marbindrakon/sushy-tools.git
+      - openstacksdk
+      - gunicorn
+    executable: pip3
+
+- name: Create OpenStack config directory
+  ansible.builtin.file:
+    path: /root/.config/openstack
+    state: directory
+    mode: "0700"
+
+- name: Deploy clouds.yaml for sushy-emulator
+  ansible.builtin.template:
+    src: clouds.yaml.j2
+    dest: /root/.config/openstack/clouds.yaml
+    mode: "0600"
+
+- name: Generate htpasswd hash for sushy user
+  ansible.builtin.command:
+    cmd: "python3 -c \"import hashlib; print(hashlib.md5(b'{{ sushy_username }}:{{ sushy_password }}'.decode() if False else '{{ sushy_password }}'.encode()).hexdigest())\""
+  register: sushy_hash_result
+  changed_when: false
+  no_log: true
+
+- name: Create htpasswd file using httpd-tools
+  ansible.builtin.dnf:
+    name: httpd-tools
+    state: present
+
+- name: Generate htpasswd file
+  ansible.builtin.command:
+    cmd: "htpasswd -cbB /root/sushy-emulators.htpasswd {{ sushy_username }} {{ sushy_password }}"
+  changed_when: true
+  no_log: true
+
+- name: Set htpasswd file permissions
+  ansible.builtin.file:
+    path: /root/sushy-emulators.htpasswd
+    mode: "0600"
+
+- name: Deploy sushy-emulators config
+  ansible.builtin.template:
+    src: sushy-emulators.conf.j2
+    dest: /root/sushy-emulators.conf
+    mode: "0644"
+  notify: restart sushy-emulators
+
+- name: Deploy sushy-emulators systemd unit
+  ansible.builtin.template:
+    src: sushy-emulators.service.j2
+    dest: /etc/systemd/system/sushy-emulators.service
+    mode: "0644"
+  notify: restart sushy-emulators
+
+- name: Reload systemd and enable sushy-emulators
+  ansible.builtin.systemd:
+    name: sushy-emulators
+    daemon_reload: true
+    enabled: true
+    state: started
