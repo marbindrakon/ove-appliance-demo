@@ -1,0 +1,32 @@
+---
+- name: Create OVE node trunks
+  ansible.builtin.include_tasks: create_trunk.yml
+  loop: "{{ range(0, ove_node_count | int) | product([0, 1]) | list }}"
+  loop_control:
+    loop_var: node_trunk_pair
+  vars:
+    node_idx: "{{ node_trunk_pair[0] }}"
+    trunk_idx: "{{ node_trunk_pair[1] }}"
+
+- name: Create OVE node boot volumes
+  openstack.cloud.volume:
+    cloud: "{{ cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-volume"
+    image: "{{ sushy_blank_image }}"
+    size: "{{ ove_node_disk_gb }}"
+    state: present
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+
+- name: Create OVE node VMs
+  openstack.cloud.server:
+    cloud: "{{ cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
+    flavor: "{{ ove_node_flavor }}"
+    boot_volume: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-volume"
+    nics:
+      - port-id: "{{ hostvars[inventory_hostname]['trunk0_port_id_node' + item | string] }}"
+      - port-id: "{{ hostvars[inventory_hostname]['trunk1_port_id_node' + item | string] }}"
+    meta:
+      role: ove_node
+    state: present
+  loop: "{{ range(0, ove_node_count | int) | list }}"

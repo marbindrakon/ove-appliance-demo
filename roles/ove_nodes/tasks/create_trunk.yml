@@ -1,0 +1,44 @@
+# Variables expected: node_idx, trunk_idx, project_name, trunk_subports
+---
+- name: "Create parent port for {{ ove_node_name_prefix }}-{{ node_idx }} trunk {{ trunk_idx }}"
+  openstack.cloud.port:
+    cloud: "{{ cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}-trunk{{ trunk_idx }}-parent"
+    network: "{{ project_name }}-trunk-native"
+    project: "{{ project_name }}"
+    port_security_enabled: false
+    state: present
+  register: parent_port
+
+- name: "Create sub-ports for {{ ove_node_name_prefix }}-{{ node_idx }} trunk {{ trunk_idx }}"
+  openstack.cloud.port:
+    cloud: "{{ cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}-trunk{{ trunk_idx }}-vlan{{ item.vlan_id }}"
+    network: "{{ item.network }}"
+    project: "{{ project_name }}"
+    port_security_enabled: false
+    state: present
+  loop: "{{ trunk_subports }}"
+  register: sub_ports
+
+- name: "Build sub-port argument list for {{ ove_node_name_prefix }}-{{ node_idx }} trunk {{ trunk_idx }}"
+  ansible.builtin.set_fact:
+    subport_args: >-
+      {% for result in sub_ports.results %}
+      --subport port={{ result.port.id }},segmentation-type=vlan,segmentation-id={{ result.item.vlan_id }}{{ ' ' }}
+      {% endfor %}
+
+- name: "Create trunk for {{ ove_node_name_prefix }}-{{ node_idx }} trunk {{ trunk_idx }}"
+  ansible.builtin.command:
+    cmd: >-
+      openstack --os-cloud {{ cloud_name }}
+      network trunk create
+      --parent-port {{ parent_port.port.id }}
+      {{ subport_args }}
+      {{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}-trunk{{ trunk_idx }}
+  register: trunk_result
+  changed_when: trunk_result.rc == 0
+
+- name: "Store parent port ID for {{ ove_node_name_prefix }}-{{ node_idx }} trunk {{ trunk_idx }}"
+  ansible.builtin.set_fact:
+    "trunk{{ trunk_idx }}_port_id_node{{ node_idx }}": "{{ parent_port.port.id }}"

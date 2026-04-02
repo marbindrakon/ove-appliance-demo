@@ -1,0 +1,13 @@
+---
+# Trunk sub-port definitions — maps VLAN IDs to networks
+trunk_subports:
+  - vlan_id: "{{ mgmt_vlan_id }}"
+    network: "{{ project_name }}-mgmt"
+  - vlan_id: "{{ storage_vlan_id }}"
+    network: "{{ project_name }}-storage"
+  - vlan_id: "{{ workload1_vlan_id }}"
+    network: "{{ project_name }}-workload1"
+  - vlan_id: "{{ workload2_vlan_id }}"
+    network: "{{ project_name }}-workload2"
+  - vlan_id: "{{ workload3_vlan_id }}"
+    network: "{{ project_name }}-workload3"
