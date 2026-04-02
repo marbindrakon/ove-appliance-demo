@@ -1,0 +1,63 @@
+---
+# boot-ove-nodes.yml — Day-2 playbook: copy OVE agent ISO and boot all nodes via Redfish
+#
+# Usage:
+#   ansible-playbook boot-ove-nodes.yml
+#   ansible-playbook boot-ove-nodes.yml -e ove_agent_iso_path=/path/to/custom.iso
+#
+# Requires: bastion already configured via site.yml (httpd running, sushy-emulator running)
+
+- name: Copy OVE agent ISO to bastion
+  hosts: ove_demo_bastion
+  become: true
+  gather_facts: false
+  vars:
+    ove_agent_iso_path: "{{ playbook_dir }}/agent-ove.x86_64.iso"
+  tasks:
+    - name: Copy OVE agent ISO to web root
+      ansible.builtin.copy:
+        src: "{{ ove_agent_iso_path }}"
+        dest: "/var/www/html/{{ ove_agent_iso_path | basename }}"
+        mode: "0644"
+
+- name: Boot OVE nodes via Redfish
+  hosts: ove_demo_bastion
+  gather_facts: false
+  vars:
+    ove_agent_iso_path: "{{ playbook_dir }}/agent-ove.x86_64.iso"
+    ove_iso_url: "http://localhost/{{ ove_agent_iso_path | basename }}"
+  tasks:
+    - name: Insert virtual media for OVE node
+      community.general.redfish_command:
+        category: Manager
+        command: VirtualMediaInsert
+        baseuri: "localhost:{{ sushy_port }}"
+        username: "{{ sushy_username }}"
+        password: "{{ sushy_password }}"
+        virtual_media:
+          image_url: "{{ ove_iso_url }}"
+          media_types:
+            - CD
+        resource_id: "{{ hostvars[item].openstack.id }}"
+      loop: "{{ groups['ove_demo_ove_node'] }}"
+
+    - name: Set one-time boot from CD for OVE node
+      community.general.redfish_command:
+        category: Systems
+        command: SetOneTimeBoot
+        baseuri: "localhost:{{ sushy_port }}"
+        username: "{{ sushy_username }}"
+        password: "{{ sushy_password }}"
+        bootdevice: Cd
+        resource_id: "{{ hostvars[item].openstack.id }}"
+      loop: "{{ groups['ove_demo_ove_node'] }}"
+
+    - name: Power on OVE node
+      community.general.redfish_command:
+        category: Systems
+        command: PowerOn
+        baseuri: "localhost:{{ sushy_port }}"
+        username: "{{ sushy_username }}"
+        password: "{{ sushy_password }}"
+        resource_id: "{{ hostvars[item].openstack.id }}"
+      loop: "{{ groups['ove_demo_ove_node'] }}"
