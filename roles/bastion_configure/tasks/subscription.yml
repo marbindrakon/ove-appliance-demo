@@ -1,0 +1,30 @@
+---
+- name: Install Satellite CA RPM
+  ansible.builtin.dnf:
+    name: "{{ satellite_url }}/pub/katello-ca-consumer-latest.noarch.rpm"
+    state: present
+    disable_gpg_check: true
+  when: subscription_type == 'satellite'
+
+- name: Update CA trust
+  ansible.builtin.command: update-ca-trust
+  changed_when: true
+  when: subscription_type == 'satellite'
+
+- name: Register to Satellite
+  ansible.builtin.command: >
+    subscription-manager register
+    --org {{ rh_subscription_org }}
+    --activationkey {{ rh_subscription_activation_key }}
+  args:
+    creates: /etc/pki/consumer/cert.pem
+  when: subscription_type == 'satellite'
+
+- name: Register to Red Hat CDN
+  ansible.builtin.command: >
+    subscription-manager register
+    --org {{ rh_subscription_org }}
+    --activationkey {{ rh_subscription_activation_key }}
+  args:
+    creates: /etc/pki/consumer/cert.pem
+  when: subscription_type == 'cdn'

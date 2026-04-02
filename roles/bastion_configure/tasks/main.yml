@@ -1,4 +1,7 @@
 ---
+- name: Register with RHSM
+  ansible.builtin.include_tasks: subscription.yml
+
 - name: Configure GNOME desktop
   ansible.builtin.include_tasks: desktop.yml
 
