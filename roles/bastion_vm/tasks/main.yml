@@ -45,6 +45,15 @@
     state: present
   register: bastion_server
 
+# openstack.cloud.server resets port SGs on attach — reapply after VM creation
+- name: Reapply security group to bastion port
+  openstack.cloud.port:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-bastion-port"
+    security_groups:
+      - "{{ default_sg_id }}"
+    state: present
+
 - name: Assign floating IP to bastion
   openstack.cloud.floating_ip:
     cloud: "{{ demo_cloud_name }}"
