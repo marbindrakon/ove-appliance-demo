@@ -40,8 +40,6 @@
     nics:
       - port-id: "{{ bastion_port.port.id }}"
       - port-id: "{{ bastion_mgmt_port.port.id }}"
-    security_groups:
-      - "{{ default_sg_id }}"
     meta:
       role: bastion
     state: present
