@@ -1,4 +1,7 @@
 ---
+# Debug — set to true to disable no_log (e.g., ansible-playbook site.yml -e debug_mode=true)
+debug_mode: false
+
 # OpenStack connection
 cloud_name: "lab-infra"  # Must be set by operator — matches a cloud in clouds.yaml
 demo_cloud_name: "{{ project_name }}"  # Auto-created cloud entry scoped to demo project

@@ -28,7 +28,7 @@
       ansible.builtin.slurp:
         src: "{{ clouds_yaml_path }}"
       register: clouds_yaml_raw
-      no_log: true
+      no_log: "{{ not debug_mode | default(false) | bool }}"
 
     - name: Ensure demo project cloud entry exists in clouds.yaml
       vars:
@@ -40,7 +40,7 @@
         content: "{{ _updated | to_nice_yaml(indent=2) }}"
         dest: "{{ clouds_yaml_path }}"
         mode: '0600'
-      no_log: true
+      no_log: "{{ not debug_mode | default(false) | bool }}"
 
     # --- Delete OVE node VMs and volumes ---
     - name: Delete OVE node VMs
@@ -150,7 +150,7 @@
         name: "{{ project_name }}-sushy-credential"
         state: absent
       failed_when: false
-      no_log: true
+      no_log: "{{ not debug_mode | default(false) | bool }}"
 
     - name: Delete sushy service user
       openstack.cloud.identity_user:
@@ -172,7 +172,7 @@
       ansible.builtin.slurp:
         src: "{{ clouds_yaml_path }}"
       register: clouds_yaml_final
-      no_log: true
+      no_log: "{{ not debug_mode | default(false) | bool }}"
 
     - name: Remove demo cloud entry from clouds.yaml
       vars:
@@ -183,7 +183,7 @@
         content: "{{ _updated | to_nice_yaml(indent=2) }}"
         dest: "{{ clouds_yaml_path }}"
         mode: '0600'
-      no_log: true
+      no_log: "{{ not debug_mode | default(false) | bool }}"
 
     # --- Clean up local credential cache ---
     - name: Remove local credential cache

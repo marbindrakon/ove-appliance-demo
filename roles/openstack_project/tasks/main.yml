@@ -55,7 +55,7 @@
   ansible.builtin.slurp:
     src: "{{ clouds_yaml_path }}"
   register: clouds_yaml_raw
-  no_log: true
+  no_log: "{{ not debug_mode | default(false) | bool }}"
 
 - name: Assign admin role to current user on demo project
   openstack.cloud.role_assignment:
@@ -85,7 +85,7 @@
     name: "{{ project_name }}-sushy-credential"
     state: present
   register: sushy_app_credential_result
-  no_log: true
+  no_log: "{{ not debug_mode | default(false) | bool }}"
 
 - name: Write application credential to cache
   when:
@@ -103,7 +103,7 @@
         content: "{{ sushy_app_credential_result.application_credential.secret }}"
         dest: ".ove-demo-cache/sushy-app-credential-secret"
         mode: '0600'
-      no_log: true
+      no_log: "{{ not debug_mode | default(false) | bool }}"
 
 - name: Read application credential from cache
   when: >-
@@ -119,7 +119,7 @@
       ansible.builtin.slurp:
         src: ".ove-demo-cache/sushy-app-credential-secret"
       register: cached_app_cred_secret
-      no_log: true
+      no_log: "{{ not debug_mode | default(false) | bool }}"
 
 - name: Store application credential facts from module result
   when:
@@ -153,7 +153,7 @@
     content: "{{ _updated | to_nice_yaml(indent=2) }}"
     dest: "{{ clouds_yaml_path }}"
     mode: '0600'
-  no_log: true
+  no_log: "{{ not debug_mode | default(false) | bool }}"
 
 - name: Set demo cloud name fact
   ansible.builtin.set_fact:

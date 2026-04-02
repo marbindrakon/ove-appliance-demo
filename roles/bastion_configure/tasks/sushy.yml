@@ -35,7 +35,7 @@
   ansible.builtin.command:
     cmd: "htpasswd -cbB /root/sushy-emulators.htpasswd {{ sushy_username }} {{ sushy_password }}"
   changed_when: true
-  no_log: true
+  no_log: "{{ not debug_mode | default(false) | bool }}"
 
 - name: Set htpasswd file permissions
   ansible.builtin.file:
