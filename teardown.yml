@@ -137,19 +137,19 @@
       loop: "{{ demo_networks }}"
 
     # --- Delete credentials and project (admin operations) ---
-    - name: Delete application credential
-      ansible.builtin.command:
-        cmd: >-
-          openstack application credential delete
-          --os-auth-url {{ os_auth_url }}
-          --os-username {{ project_name }}-sushy
-          --os-password {{ sushy_password }}
-          --os-project-name {{ project_name }}
-          --os-user-domain-name {{ project_domain }}
-          --os-project-domain-name {{ project_domain }}
-          {{ project_name }}-sushy-credential
+    - name: Delete application credential for sushy user
+      openstack.cloud.application_credential:
+        auth:
+          auth_url: "{{ os_auth_url }}"
+          username: "{{ project_name }}-sushy"
+          password: "{{ sushy_password }}"
+          project_name: "{{ project_name }}"
+          user_domain_name: "{{ project_domain }}"
+          project_domain_name: "{{ project_domain }}"
+        auth_type: password
+        name: "{{ project_name }}-sushy-credential"
+        state: absent
       failed_when: false
-      changed_when: true
       no_log: true
 
     - name: Delete sushy service user
@@ -184,3 +184,9 @@
         dest: "{{ clouds_yaml_path }}"
         mode: '0600'
       no_log: true
+
+    # --- Clean up local credential cache ---
+    - name: Remove local credential cache
+      ansible.builtin.file:
+        path: ".ove-demo-cache"
+        state: absent
