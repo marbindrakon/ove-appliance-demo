@@ -103,12 +103,18 @@
 
     # --- Delete credentials and project ---
     - name: Delete application credential
-      openstack.cloud.application_credential:
-        cloud: "{{ cloud_name }}"
-        name: "{{ project_name }}-sushy-credential"
-        user: "{{ project_name }}-sushy"
-        state: absent
+      ansible.builtin.command:
+        cmd: >-
+          openstack application credential delete
+          --os-auth-url {{ os_auth_url }}
+          --os-username {{ project_name }}-sushy
+          --os-password {{ sushy_password }}
+          --os-project-name {{ project_name }}
+          --os-user-domain-name {{ project_domain }}
+          --os-project-domain-name {{ project_domain }}
+          {{ project_name }}-sushy-credential
       failed_when: false
+      changed_when: true
 
     - name: Delete sushy service user
       openstack.cloud.identity_user:

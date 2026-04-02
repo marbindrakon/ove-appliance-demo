@@ -24,17 +24,36 @@
     role: "member"
     state: present
 
+- name: Get auth URL from cloud config
+  ansible.builtin.command:
+    cmd: "openstack --os-cloud {{ cloud_name }} catalog show identity -f value -c endpoints"
+  register: identity_endpoints
+  changed_when: false
+  when: os_auth_url == ""
+
 - name: Create application credential for sushy user
-  openstack.cloud.application_credential:
-    cloud: "{{ cloud_name }}"
-    name: "{{ project_name }}-sushy-credential"
-    user: "{{ project_name }}-sushy"
-    state: present
-  register: sushy_app_credential
+  ansible.builtin.command:
+    cmd: >-
+      openstack application credential create
+      --os-auth-url {{ os_auth_url }}
+      --os-username {{ project_name }}-sushy
+      --os-password {{ sushy_password }}
+      --os-project-name {{ project_name }}
+      --os-user-domain-name {{ project_domain }}
+      --os-project-domain-name {{ project_domain }}
+      -f json
+      {{ project_name }}-sushy-credential
+  register: sushy_app_credential_raw
+  changed_when: sushy_app_credential_raw.rc == 0
+  no_log: true
+
+- name: Parse application credential output
+  ansible.builtin.set_fact:
+    sushy_app_credential: "{{ sushy_app_credential_raw.stdout | from_json }}"
 
 - name: Store application credential details
   ansible.builtin.set_fact:
-    sushy_app_credential_id: "{{ sushy_app_credential.application_credential.id }}"
-    sushy_app_credential_secret: "{{ sushy_app_credential.application_credential.secret }}"
+    sushy_app_credential_id: "{{ sushy_app_credential.id }}"
+    sushy_app_credential_secret: "{{ sushy_app_credential.secret }}"
     demo_project_name: "{{ project_name }}"
     cacheable: true
