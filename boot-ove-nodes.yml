@@ -27,6 +27,8 @@
     ove_agent_iso_path: "{{ playbook_dir }}/agent-ove.x86_64.iso"
     ove_iso_url: "http://localhost/{{ ove_agent_iso_path | basename }}"
   tasks:
+    # sushy-emulator only listens on the management interface (firewalld trusted zone).
+    # All Redfish calls must originate from the bastion itself, so baseuri targets localhost.
     - name: Insert virtual media for OVE node
       community.general.redfish_command:
         category: Manager
@@ -39,6 +41,7 @@
           media_types:
             - CD
         resource_id: "{{ hostvars[item].openstack.id }}"
+      no_log: "{{ not debug_mode | default(false) | bool }}"
       loop: "{{ groups['ove_demo_ove_node'] }}"
 
     - name: Set one-time boot from CD for OVE node
@@ -50,6 +53,7 @@
         password: "{{ sushy_password }}"
         bootdevice: Cd
         resource_id: "{{ hostvars[item].openstack.id }}"
+      no_log: "{{ not debug_mode | default(false) | bool }}"
       loop: "{{ groups['ove_demo_ove_node'] }}"
 
     - name: Power on OVE node
@@ -60,4 +64,5 @@
         username: "{{ sushy_username }}"
         password: "{{ sushy_password }}"
         resource_id: "{{ hostvars[item].openstack.id }}"
+      no_log: "{{ not debug_mode | default(false) | bool }}"
       loop: "{{ groups['ove_demo_ove_node'] }}"
