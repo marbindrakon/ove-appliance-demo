@@ -9,11 +9,11 @@
     cmd: ansible-galaxy collection install community.general
   changed_when: false
 
-- name: Copy OVE agent ISO to web root
-  ansible.builtin.copy:
+- name: Sync OVE agent ISO to web root
+  ansible.posix.synchronize:
     src: "{{ ove_agent_iso_path }}"
     dest: "/var/www/html/{{ ove_agent_iso_path | basename }}"
-    mode: "0644"
+    mode: push
 
 - name: Template Redfish inventory
   ansible.builtin.template:
