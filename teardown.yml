@@ -1,0 +1,126 @@
+# teardown.yml — Destroy all OVE demo resources
+---
+- name: Tear down OVE demo environment
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    # --- Delete OVE node VMs and volumes ---
+    - name: Delete OVE node VMs
+      openstack.cloud.server:
+        cloud: "{{ cloud_name }}"
+        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
+        state: absent
+      loop: "{{ range(0, ove_node_count | int) | list }}"
+
+    - name: Delete OVE node boot volumes
+      openstack.cloud.volume:
+        cloud: "{{ cloud_name }}"
+        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-volume"
+        state: absent
+      loop: "{{ range(0, ove_node_count | int) | list }}"
+
+    # --- Delete OVE node trunk ports ---
+    - name: Delete OVE node trunks
+      ansible.builtin.command:
+        cmd: >-
+          openstack --os-cloud {{ cloud_name }}
+          network trunk delete
+          {{ project_name }}-{{ ove_node_name_prefix }}-{{ item[0] }}-trunk{{ item[1] }}
+      loop: "{{ range(0, ove_node_count | int) | product([0, 1]) | list }}"
+      failed_when: false
+      changed_when: true
+
+    - name: Delete OVE node sub-ports
+      openstack.cloud.port:
+        cloud: "{{ cloud_name }}"
+        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item[0] }}-trunk{{ item[1] }}-vlan{{ item[2] }}"
+        state: absent
+      loop: >-
+        {{ range(0, ove_node_count | int)
+           | product([0, 1])
+           | product([mgmt_vlan_id, storage_vlan_id, workload1_vlan_id, workload2_vlan_id, workload3_vlan_id])
+           | map('flatten')
+           | list }}
+
+    - name: Delete OVE node parent ports
+      openstack.cloud.port:
+        cloud: "{{ cloud_name }}"
+        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item[0] }}-trunk{{ item[1] }}-parent"
+        state: absent
+      loop: "{{ range(0, ove_node_count | int) | product([0, 1]) | list }}"
+
+    # --- Delete bastion VM ---
+    - name: Release bastion floating IP
+      openstack.cloud.floating_ip:
+        cloud: "{{ cloud_name }}"
+        server: "{{ project_name }}-bastion"
+        network: "{{ external_network }}"
+        state: absent
+      failed_when: false
+
+    - name: Delete bastion VM
+      openstack.cloud.server:
+        cloud: "{{ cloud_name }}"
+        name: "{{ project_name }}-bastion"
+        state: absent
+
+    - name: Delete bastion boot volume
+      openstack.cloud.volume:
+        cloud: "{{ cloud_name }}"
+        name: "{{ project_name }}-bastion-volume"
+        state: absent
+
+    - name: Delete bastion ports
+      openstack.cloud.port:
+        cloud: "{{ cloud_name }}"
+        name: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ project_name }}-bastion-port"
+        - "{{ project_name }}-bastion-mgmt-port"
+
+    # --- Delete router and networks ---
+    - name: Delete router
+      openstack.cloud.router:
+        cloud: "{{ cloud_name }}"
+        name: "{{ project_name }}-router"
+        state: absent
+
+    - name: Delete subnets
+      openstack.cloud.subnet:
+        cloud: "{{ cloud_name }}"
+        name: "{{ item.name }}-subnet"
+        state: absent
+      loop: "{{ demo_networks }}"
+
+    - name: Delete networks
+      openstack.cloud.network:
+        cloud: "{{ cloud_name }}"
+        name: "{{ item.name }}"
+        state: absent
+      loop: "{{ demo_networks }}"
+
+    # --- Delete credentials and project ---
+    - name: Delete application credential
+      openstack.cloud.application_credential:
+        cloud: "{{ cloud_name }}"
+        name: "{{ project_name }}-sushy-credential"
+        user: "{{ project_name }}-sushy"
+        state: absent
+      failed_when: false
+
+    - name: Delete sushy service user
+      openstack.cloud.identity_user:
+        cloud: "{{ cloud_name }}"
+        name: "{{ project_name }}-sushy"
+        domain: "{{ project_domain }}"
+        state: absent
+      failed_when: false
+
+    - name: Delete demo project
+      openstack.cloud.project:
+        cloud: "{{ cloud_name }}"
+        name: "{{ project_name }}"
+        domain_id: "{{ project_domain }}"
+        state: absent
