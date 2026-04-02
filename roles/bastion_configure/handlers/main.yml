@@ -3,3 +3,8 @@
   ansible.builtin.systemd:
     name: named
     state: restarted
+
+- name: restart chronyd
+  ansible.builtin.systemd:
+    name: chronyd
+    state: restarted

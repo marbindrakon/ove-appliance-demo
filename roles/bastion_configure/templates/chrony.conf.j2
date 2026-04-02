@@ -1,0 +1,12 @@
+# /etc/chrony.conf — managed by Ansible
+{% for server in ntp_upstream_servers %}
+server {{ server }} iburst
+{% endfor %}
+
+# Serve time to the OCP management network
+allow {{ mgmt_network_cidr }}
+
+driftfile /var/lib/chrony/drift
+makestep 1.0 3
+rtcsync
+logdir /var/log/chrony
