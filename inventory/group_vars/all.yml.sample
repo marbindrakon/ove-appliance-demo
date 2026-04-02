@@ -1,0 +1,96 @@
+---
+# OpenStack connection
+cloud_name: "lab-infra"  # Must be set by operator — matches a cloud in clouds.yaml
+demo_cloud_name: "{{ project_name }}"  # Auto-created cloud entry scoped to demo project
+
+# External/provider network
+external_network: "ext-net"
+
+# Project
+project_name: "ove-demo-{{ lookup('password', '.ove-demo-cache/project-suffix chars=ascii_lowercase,digits length=5') }}"
+project_domain: "Default"
+
+# Sushy service user
+sushy_username: "sushy"
+sushy_password: "{{ lookup('password', '.ove-demo-cache/sushy-password chars=ascii_letters,digits length=24') }}"
+
+# SSH key
+ssh_key_name: ""  # Must be set by operator
+
+# OpenStack auth URL (needed for sushy-emulator clouds.yaml)
+os_auth_url: ""  # Must be set by operator (e.g., https://identity.example.com:5000/v3)
+
+# Subscription
+subscription_type: "cdn"  # "cdn" for Red Hat CDN, "satellite" for Satellite
+satellite_url: ""  # Required when subscription_type == satellite (e.g., http://satellite.example.com)
+rh_subscription_org: ""  # Must be set by operator
+rh_subscription_activation_key: ""  # Must be set by operator
+
+# Bastion VM
+bastion_flavor: "g1.large"
+bastion_image: "rhel-9.5"
+bastion_disk_gb: 250
+bastion_mgmt_ip: "10.10.0.1"
+
+# OVE node VMs
+ove_node_flavor: "g1.4xlarge"
+ove_node_count: 4
+ove_node_name_prefix: "ove-node"
+ove_node_disk_gb: 250
+
+# OVE cluster DNS
+cluster_name: "ove"
+base_domain: "example.com"
+api_vip: "10.10.0.100"
+ingress_vip: "10.10.0.101"
+
+# Sushy emulator
+sushy_blank_image: "sushy-tools-blank-image"
+sushy_port: 8000
+
+# Networks
+bastion_network_cidr: "10.0.0.0/24"
+trunk_native_cidr: "10.99.0.0/24"
+mgmt_network_cidr: "10.10.0.0/24"
+storage_network_cidr: "10.20.0.0/24"
+workload1_network_cidr: "192.168.10.0/24"
+workload2_network_cidr: "192.168.20.0/24"
+workload3_network_cidr: "192.168.30.0/24"
+
+# VLAN IDs for trunk sub-ports
+mgmt_vlan_id: 10
+storage_vlan_id: 20
+workload1_vlan_id: 30
+workload2_vlan_id: 40
+workload3_vlan_id: 50
+
+# Network definitions — used by both site.yml and teardown.yml
+demo_networks:
+  - name: "{{ project_name }}-bastion"
+    cidr: "{{ bastion_network_cidr }}"
+    enable_dhcp: true
+    port_security_enabled: true
+  - name: "{{ project_name }}-trunk-native"
+    cidr: "{{ trunk_native_cidr }}"
+    enable_dhcp: false
+    port_security_enabled: false
+  - name: "{{ project_name }}-mgmt"
+    cidr: "{{ mgmt_network_cidr }}"
+    enable_dhcp: false
+    port_security_enabled: false
+  - name: "{{ project_name }}-storage"
+    cidr: "{{ storage_network_cidr }}"
+    enable_dhcp: false
+    port_security_enabled: false
+  - name: "{{ project_name }}-workload1"
+    cidr: "{{ workload1_network_cidr }}"
+    enable_dhcp: false
+    port_security_enabled: false
+  - name: "{{ project_name }}-workload2"
+    cidr: "{{ workload2_network_cidr }}"
+    enable_dhcp: false
+    port_security_enabled: false
+  - name: "{{ project_name }}-workload3"
+    cidr: "{{ workload3_network_cidr }}"
+    enable_dhcp: false
+    port_security_enabled: false
