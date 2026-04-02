@@ -15,6 +15,7 @@
 - name: Configure bastion host
   hosts: ove_demo_bastion
   gather_facts: true
+  become: true
   vars:
     os_auth_url: "{{ lookup('env', 'OS_AUTH_URL') | default(hostvars['localhost']['os_auth_url'], true) }}"
     os_region: "{{ lookup('env', 'OS_REGION_NAME') | default(hostvars['localhost']['os_region'] | default('RegionOne'), true) }}"
