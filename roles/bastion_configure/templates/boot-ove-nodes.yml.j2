@@ -7,38 +7,50 @@
   hosts: ove_nodes
   connection: local
   gather_facts: false
+  vars:
+    redfish_base: "http://localhost:{{ sushy_port }}/redfish/v1/Systems/{% raw %}{{ inventory_hostname }}{% endraw %}"
+    redfish_auth:
+      user: "{{ sushy_username }}"
+      password: "{{ sushy_password }}"
   tasks:
     - name: Insert ISO as virtual media
-      community.general.redfish_command:
-        category: Manager
-        command: VirtualMediaInsert
-        baseuri: "localhost:{{ sushy_port }}"
-        username: "{{ sushy_username }}"
-        password: "{{ sushy_password }}"
-        virtual_media:
-          image_url: "http://localhost/{{ ove_agent_iso_path | basename }}"
-          media_types:
-            - CD
-        resource_id: "{% raw %}{{ inventory_hostname }}{% endraw %}"
+      ansible.builtin.uri:
+        url: "{{ redfish_base }}/VirtualMedia/Cd/Actions/VirtualMedia.InsertMedia"
+        method: POST
+        url_username: "{{ sushy_username }}"
+        url_password: "{{ sushy_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          Image: "http://localhost/{{ ove_agent_iso_path | basename }}"
+          Inserted: true
+        status_code: [200, 204]
       no_log: true
 
     - name: Set one-time boot from CD
-      community.general.redfish_command:
-        category: Systems
-        command: SetOneTimeBoot
-        baseuri: "localhost:{{ sushy_port }}"
-        username: "{{ sushy_username }}"
-        password: "{{ sushy_password }}"
-        bootdevice: Cd
-        resource_id: "{% raw %}{{ inventory_hostname }}{% endraw %}"
+      ansible.builtin.uri:
+        url: "{{ redfish_base }}"
+        method: PATCH
+        url_username: "{{ sushy_username }}"
+        url_password: "{{ sushy_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          Boot:
+            BootSourceOverrideEnabled: "Once"
+            BootSourceOverrideTarget: "Cd"
+        status_code: [200, 204]
       no_log: true
 
     - name: Power on
-      community.general.redfish_command:
-        category: Systems
-        command: PowerOn
-        baseuri: "localhost:{{ sushy_port }}"
-        username: "{{ sushy_username }}"
-        password: "{{ sushy_password }}"
-        resource_id: "{% raw %}{{ inventory_hostname }}{% endraw %}"
+      ansible.builtin.uri:
+        url: "{{ redfish_base }}/Actions/ComputerSystem.Reset"
+        method: POST
+        url_username: "{{ sushy_username }}"
+        url_password: "{{ sushy_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          ResetType: "On"
+        status_code: [200, 204]
       no_log: true
