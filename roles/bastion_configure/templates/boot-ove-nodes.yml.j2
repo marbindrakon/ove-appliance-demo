@@ -20,7 +20,7 @@
           media_types:
             - CD
         resource_id: "{% raw %}{{ inventory_hostname }}{% endraw %}"
-        no_log: true
+      no_log: true
 
     - name: Set one-time boot from CD
       community.general.redfish_command:
@@ -31,7 +31,7 @@
         password: "{{ sushy_password }}"
         bootdevice: Cd
         resource_id: "{% raw %}{{ inventory_hostname }}{% endraw %}"
-        no_log: true
+      no_log: true
 
     - name: Power on
       community.general.redfish_command:
@@ -41,4 +41,4 @@
         username: "{{ sushy_username }}"
         password: "{{ sushy_password }}"
         resource_id: "{% raw %}{{ inventory_hostname }}{% endraw %}"
-        no_log: true
+      no_log: true
