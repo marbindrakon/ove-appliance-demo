@@ -1,0 +1,5 @@
+---
+collections:
+  - name: openstack.cloud
+  - name: ansible.utils
+  - name: ansible.posix

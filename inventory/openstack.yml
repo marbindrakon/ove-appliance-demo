@@ -1,0 +1,14 @@
+plugin: openstack.cloud.openstack
+
+only_clouds:
+  - "{{ cloud_name }}"
+
+expand_hostvars: true
+fail_on_errors: true
+legacy_groups: false
+strict: false
+
+keyed_groups:
+  - key: openstack.metadata.role
+    prefix: ove_demo
+    separator: "_"
