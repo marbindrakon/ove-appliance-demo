@@ -19,3 +19,6 @@
 
 - name: Configure Apache httpd
   ansible.builtin.include_tasks: httpd.yml
+
+- name: Prepare OVE node boot resources
+  ansible.builtin.include_tasks: boot_prep.yml
