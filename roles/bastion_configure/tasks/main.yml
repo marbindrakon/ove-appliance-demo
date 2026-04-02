@@ -16,3 +16,6 @@
 
 - name: Configure sushy-emulator
   ansible.builtin.include_tasks: sushy.yml
+
+- name: Configure Apache httpd
+  ansible.builtin.include_tasks: httpd.yml
