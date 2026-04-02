@@ -1,0 +1,13 @@
+; Reverse zone for {{ mgmt_network_cidr }} — managed by Ansible
+$TTL 86400
+@   IN  SOA bastion.{{ base_domain }}. admin.{{ base_domain }}. (
+        2024010101  ; serial
+        3600        ; refresh
+        1800        ; retry
+        604800      ; expire
+        86400       ; minimum TTL
+)
+@   IN  NS  bastion.{{ base_domain }}.
+
+{{ bastion_mgmt_ip | ansible.utils.ipaddr('revdns') | regex_replace('\\..*$', '') }}  IN  PTR  bastion.{{ base_domain }}.
+{{ api_vip | ansible.utils.ipaddr('revdns') | regex_replace('\\..*$', '') }}           IN  PTR  api.{{ cluster_name }}.{{ base_domain }}.

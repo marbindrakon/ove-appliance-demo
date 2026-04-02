@@ -1,0 +1,15 @@
+; {{ base_domain }} zone — managed by Ansible
+$TTL 86400
+@   IN  SOA bastion.{{ base_domain }}. admin.{{ base_domain }}. (
+        2024010101  ; serial
+        3600        ; refresh
+        1800        ; retry
+        604800      ; expire
+        86400       ; minimum TTL
+)
+@           IN  NS  bastion.{{ base_domain }}.
+bastion     IN  A   {{ bastion_mgmt_ip }}
+
+; OVE cluster endpoints
+api.{{ cluster_name }}          IN  A   {{ api_vip }}
+*.apps.{{ cluster_name }}       IN  A   {{ ingress_vip }}

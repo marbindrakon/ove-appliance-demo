@@ -1,0 +1,28 @@
+// /etc/named.conf — managed by Ansible
+options {
+    listen-on port 53 { 127.0.0.1; {{ bastion_mgmt_ip }}; };
+    listen-on-v6 port 53 { none; };
+    directory       "/var/named";
+    dump-file       "/var/named/data/cache_dump.db";
+    statistics-file "/var/named/data/named_stats.txt";
+    allow-query     { localhost; {{ mgmt_network_cidr }}; };
+    recursion yes;
+    forwarders {
+{% for fwd in dns_forwarders %}
+        {{ fwd }};
+{% endfor %}
+    };
+    dnssec-validation no;
+};
+
+zone "{{ base_domain }}" IN {
+    type master;
+    file "{{ base_domain }}.db";
+    allow-update { none; };
+};
+
+zone "{{ mgmt_network_cidr | ansible.utils.ipaddr('revdns') | regex_replace('^[0-9]+\\.', '') | regex_replace('\\.$', '') }}" IN {
+    type master;
+    file "{{ mgmt_network_cidr | ansible.utils.ipaddr('revdns') | regex_replace('^[0-9]+\\.', '') | regex_replace('\\.$', '') }}.db";
+    allow-update { none; };
+};

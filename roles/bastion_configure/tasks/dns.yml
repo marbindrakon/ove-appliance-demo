@@ -1,0 +1,40 @@
+---
+- name: Install BIND
+  ansible.builtin.dnf:
+    name:
+      - bind
+      - bind-utils
+    state: present
+
+- name: Deploy named.conf
+  ansible.builtin.template:
+    src: named.conf.j2
+    dest: /etc/named.conf
+    owner: root
+    group: named
+    mode: "0640"
+  notify: restart named
+
+- name: Deploy forward zone file
+  ansible.builtin.template:
+    src: ove-zone.db.j2
+    dest: "/var/named/{{ base_domain }}.db"
+    owner: root
+    group: named
+    mode: "0640"
+  notify: restart named
+
+- name: Deploy reverse zone file
+  ansible.builtin.template:
+    src: ove-reverse.db.j2
+    dest: "/var/named/{{ mgmt_network_cidr | ansible.utils.ipaddr('revdns') | regex_replace('^[0-9]+\\.', '') | regex_replace('\\.$', '') }}.db"
+    owner: root
+    group: named
+    mode: "0640"
+  notify: restart named
+
+- name: Start and enable named
+  ansible.builtin.systemd:
+    name: named
+    state: started
+    enabled: true
