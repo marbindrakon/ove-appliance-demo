@@ -1,0 +1,43 @@
+---
+- name: Disable IP forwarding
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "0"
+    sysctl_set: true
+    reload: true
+    state: present
+
+- name: Ensure firewalld is installed and running
+  ansible.builtin.dnf:
+    name: firewalld
+    state: present
+
+- name: Start and enable firewalld
+  ansible.builtin.systemd:
+    name: firewalld
+    state: started
+    enabled: true
+
+- name: Allow DNS on management interface
+  ansible.posix.firewalld:
+    service: dns
+    zone: trusted
+    permanent: true
+    immediate: true
+    state: enabled
+
+- name: Allow NTP on management interface
+  ansible.posix.firewalld:
+    service: ntp
+    zone: trusted
+    permanent: true
+    immediate: true
+    state: enabled
+
+- name: Allow sushy-emulator port on management interface
+  ansible.posix.firewalld:
+    port: "{{ sushy_port }}/tcp"
+    zone: trusted
+    permanent: true
+    immediate: true
+    state: enabled

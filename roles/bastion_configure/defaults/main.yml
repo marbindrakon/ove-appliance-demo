@@ -1,0 +1,17 @@
+---
+# Defaults inherited from group_vars/all.yml:
+#   cluster_name, base_domain, api_vip, ingress_vip,
+#   bastion_mgmt_ip, mgmt_network_cidr,
+#   sushy_port, sushy_username, sushy_password,
+#   sushy_blank_image, sushy_app_credential_id, sushy_app_credential_secret
+
+# DNS
+dns_forwarders:
+  - 8.8.8.8
+  - 8.8.4.4
+
+# NTP
+ntp_upstream_servers:
+  - 0.rhel.pool.ntp.org
+  - 1.rhel.pool.ntp.org
+  - 2.rhel.pool.ntp.org

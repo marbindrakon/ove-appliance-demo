@@ -1,0 +1,15 @@
+---
+- name: Configure GNOME desktop
+  ansible.builtin.include_tasks: desktop.yml
+
+- name: Configure firewall (no IP forwarding)
+  ansible.builtin.include_tasks: firewall.yml
+
+- name: Configure BIND DNS
+  ansible.builtin.include_tasks: dns.yml
+
+- name: Configure Chrony NTP server
+  ansible.builtin.include_tasks: ntp.yml
+
+- name: Configure sushy-emulator
+  ansible.builtin.include_tasks: sushy.yml
