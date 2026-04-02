@@ -26,14 +26,7 @@
     dest: /root/.config/openstack/clouds.yaml
     mode: "0600"
 
-- name: Generate htpasswd hash for sushy user
-  ansible.builtin.command:
-    cmd: "python3 -c \"import hashlib; print(hashlib.md5(b'{{ sushy_username }}:{{ sushy_password }}'.decode() if False else '{{ sushy_password }}'.encode()).hexdigest())\""
-  register: sushy_hash_result
-  changed_when: false
-  no_log: true
-
-- name: Create htpasswd file using httpd-tools
+- name: Install httpd-tools for htpasswd
   ansible.builtin.dnf:
     name: httpd-tools
     state: present
