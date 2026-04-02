@@ -1,0 +1,40 @@
+---
+- name: Create demo project
+  openstack.cloud.project:
+    cloud: "{{ cloud_name }}"
+    name: "{{ project_name }}"
+    domain_id: "{{ project_domain }}"
+    state: present
+  register: demo_project
+
+- name: Create sushy service user
+  openstack.cloud.identity_user:
+    cloud: "{{ cloud_name }}"
+    name: "{{ project_name }}-sushy"
+    password: "{{ sushy_password }}"
+    domain: "{{ project_domain }}"
+    state: present
+  register: sushy_user
+
+- name: Assign member role to sushy user on demo project
+  openstack.cloud.role_assignment:
+    cloud: "{{ cloud_name }}"
+    user: "{{ project_name }}-sushy"
+    project: "{{ project_name }}"
+    role: "member"
+    state: present
+
+- name: Create application credential for sushy user
+  openstack.cloud.application_credential:
+    cloud: "{{ cloud_name }}"
+    name: "{{ project_name }}-sushy-credential"
+    user: "{{ project_name }}-sushy"
+    state: present
+  register: sushy_app_credential
+
+- name: Store application credential details
+  ansible.builtin.set_fact:
+    sushy_app_credential_id: "{{ sushy_app_credential.application_credential.id }}"
+    sushy_app_credential_secret: "{{ sushy_app_credential.application_credential.secret }}"
+    demo_project_name: "{{ project_name }}"
+    cacheable: true

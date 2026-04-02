@@ -1,0 +1,3 @@
+---
+# Defaults inherited from group_vars/all.yml:
+#   project_name, project_domain, sushy_username, sushy_password, cloud_name
