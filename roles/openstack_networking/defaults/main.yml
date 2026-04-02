@@ -1,0 +1,31 @@
+---
+# Network definitions — each entry drives network + subnet creation
+demo_networks:
+  - name: "{{ project_name }}-bastion"
+    cidr: "{{ bastion_network_cidr }}"
+    enable_dhcp: true
+    port_security_enabled: true
+  - name: "{{ project_name }}-trunk-native"
+    cidr: "{{ trunk_native_cidr }}"
+    enable_dhcp: false
+    port_security_enabled: false
+  - name: "{{ project_name }}-mgmt"
+    cidr: "{{ mgmt_network_cidr }}"
+    enable_dhcp: false
+    port_security_enabled: false
+  - name: "{{ project_name }}-storage"
+    cidr: "{{ storage_network_cidr }}"
+    enable_dhcp: false
+    port_security_enabled: false
+  - name: "{{ project_name }}-workload1"
+    cidr: "{{ workload1_network_cidr }}"
+    enable_dhcp: false
+    port_security_enabled: false
+  - name: "{{ project_name }}-workload2"
+    cidr: "{{ workload2_network_cidr }}"
+    enable_dhcp: false
+    port_security_enabled: false
+  - name: "{{ project_name }}-workload3"
+    cidr: "{{ workload3_network_cidr }}"
+    enable_dhcp: false
+    port_security_enabled: false
