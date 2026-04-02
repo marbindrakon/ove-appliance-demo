@@ -1,2 +1,3 @@
 .ove-demo-cache/
 inventory/group_vars/all.yml
+agent-ove.x86_64.iso
