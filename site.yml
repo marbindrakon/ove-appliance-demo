@@ -1,0 +1,24 @@
+# site.yml — OVE Appliance Demo Environment Orchestrator
+---
+# Play 1: Create OpenStack infrastructure (project, networks, VMs)
+- name: Create OVE demo infrastructure
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - openstack_project
+    - openstack_networking
+    - bastion_vm
+    - ove_nodes
+
+# Play 2: Configure bastion host services
+- name: Configure bastion host
+  hosts: ove_demo_bastion
+  gather_facts: true
+  vars:
+    os_auth_url: "{{ lookup('env', 'OS_AUTH_URL') | default(hostvars['localhost']['os_auth_url'], true) }}"
+    os_region: "{{ lookup('env', 'OS_REGION_NAME') | default(hostvars['localhost']['os_region'] | default('RegionOne'), true) }}"
+    sushy_app_credential_id: "{{ hostvars['localhost']['sushy_app_credential_id'] }}"
+    sushy_app_credential_secret: "{{ hostvars['localhost']['sushy_app_credential_secret'] }}"
+  roles:
+    - bastion_configure
