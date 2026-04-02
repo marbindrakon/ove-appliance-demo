@@ -5,6 +5,12 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  pre_tasks:
+    - name: Ensure local cache directory exists
+      ansible.builtin.file:
+        path: ".ove-demo-cache"
+        state: directory
+        mode: '0700'
   roles:
     - openstack_project
     - openstack_networking

@@ -4,36 +4,71 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  pre_tasks:
+    - name: Ensure local cache directory exists
+      ansible.builtin.file:
+        path: ".ove-demo-cache"
+        state: directory
+        mode: '0700'
   tasks:
+    # --- Find clouds.yaml early (needed for cleanup at end) ---
+    - name: Find clouds.yaml path
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ lookup('env', 'HOME') }}/.config/openstack/clouds.yaml"
+        - "/etc/openstack/clouds.yaml"
+      register: clouds_yaml_stat
+
+    - name: Set clouds.yaml path fact
+      ansible.builtin.set_fact:
+        clouds_yaml_path: "{{ (clouds_yaml_stat.results | selectattr('stat.exists') | first).item }}"
+
+    - name: Read clouds.yaml for setup
+      ansible.builtin.slurp:
+        src: "{{ clouds_yaml_path }}"
+      register: clouds_yaml_raw
+      no_log: true
+
+    - name: Ensure demo project cloud entry exists in clouds.yaml
+      vars:
+        _existing: "{{ clouds_yaml_raw.content | b64decode | from_yaml }}"
+        _demo_auth: "{{ _existing.clouds[cloud_name].auth | combine({'project_name': project_name, 'project_domain_name': project_domain}) }}"
+        _demo_cloud: "{{ _existing.clouds[cloud_name] | combine({'auth': _demo_auth}) }}"
+        _updated: "{{ _existing | combine({'clouds': {project_name: _demo_cloud}}, recursive=True) }}"
+      ansible.builtin.copy:
+        content: "{{ _updated | to_nice_yaml(indent=2) }}"
+        dest: "{{ clouds_yaml_path }}"
+        mode: '0600'
+      no_log: true
+
     # --- Delete OVE node VMs and volumes ---
     - name: Delete OVE node VMs
       openstack.cloud.server:
-        cloud: "{{ cloud_name }}"
+        cloud: "{{ demo_cloud_name }}"
         name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
         state: absent
       loop: "{{ range(0, ove_node_count | int) | list }}"
 
     - name: Delete OVE node boot volumes
       openstack.cloud.volume:
-        cloud: "{{ cloud_name }}"
+        cloud: "{{ demo_cloud_name }}"
         name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-volume"
         state: absent
       loop: "{{ range(0, ove_node_count | int) | list }}"
 
     # --- Delete OVE node trunk ports ---
     - name: Delete OVE node trunks
-      ansible.builtin.command:
-        cmd: >-
-          openstack --os-cloud {{ cloud_name }}
-          network trunk delete
-          {{ project_name }}-{{ ove_node_name_prefix }}-{{ item[0] }}-trunk{{ item[1] }}
+      openstack.cloud.trunk:
+        cloud: "{{ demo_cloud_name }}"
+        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item[0] }}-trunk{{ item[1] }}"
+        state: absent
       loop: "{{ range(0, ove_node_count | int) | product([0, 1]) | list }}"
       failed_when: false
-      changed_when: true
 
     - name: Delete OVE node sub-ports
       openstack.cloud.port:
-        cloud: "{{ cloud_name }}"
+        cloud: "{{ demo_cloud_name }}"
         name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item[0] }}-trunk{{ item[1] }}-vlan{{ item[2] }}"
         state: absent
       loop: >-
@@ -45,7 +80,7 @@
 
     - name: Delete OVE node parent ports
       openstack.cloud.port:
-        cloud: "{{ cloud_name }}"
+        cloud: "{{ demo_cloud_name }}"
         name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item[0] }}-trunk{{ item[1] }}-parent"
         state: absent
       loop: "{{ range(0, ove_node_count | int) | product([0, 1]) | list }}"
@@ -53,7 +88,7 @@
     # --- Delete bastion VM ---
     - name: Release bastion floating IP
       openstack.cloud.floating_ip:
-        cloud: "{{ cloud_name }}"
+        cloud: "{{ demo_cloud_name }}"
         server: "{{ project_name }}-bastion"
         network: "{{ external_network }}"
         state: absent
@@ -61,19 +96,19 @@
 
     - name: Delete bastion VM
       openstack.cloud.server:
-        cloud: "{{ cloud_name }}"
+        cloud: "{{ demo_cloud_name }}"
         name: "{{ project_name }}-bastion"
         state: absent
 
     - name: Delete bastion boot volume
       openstack.cloud.volume:
-        cloud: "{{ cloud_name }}"
+        cloud: "{{ demo_cloud_name }}"
         name: "{{ project_name }}-bastion-volume"
         state: absent
 
     - name: Delete bastion ports
       openstack.cloud.port:
-        cloud: "{{ cloud_name }}"
+        cloud: "{{ demo_cloud_name }}"
         name: "{{ item }}"
         state: absent
       loop:
@@ -83,25 +118,25 @@
     # --- Delete router and networks ---
     - name: Delete router
       openstack.cloud.router:
-        cloud: "{{ cloud_name }}"
+        cloud: "{{ demo_cloud_name }}"
         name: "{{ project_name }}-router"
         state: absent
 
     - name: Delete subnets
       openstack.cloud.subnet:
-        cloud: "{{ cloud_name }}"
+        cloud: "{{ demo_cloud_name }}"
         name: "{{ item.name }}-subnet"
         state: absent
       loop: "{{ demo_networks }}"
 
     - name: Delete networks
       openstack.cloud.network:
-        cloud: "{{ cloud_name }}"
+        cloud: "{{ demo_cloud_name }}"
         name: "{{ item.name }}"
         state: absent
       loop: "{{ demo_networks }}"
 
-    # --- Delete credentials and project ---
+    # --- Delete credentials and project (admin operations) ---
     - name: Delete application credential
       ansible.builtin.command:
         cmd: >-
@@ -115,6 +150,7 @@
           {{ project_name }}-sushy-credential
       failed_when: false
       changed_when: true
+      no_log: true
 
     - name: Delete sushy service user
       openstack.cloud.identity_user:
@@ -130,3 +166,21 @@
         name: "{{ project_name }}"
         domain_id: "{{ project_domain }}"
         state: absent
+
+    # --- Remove demo cloud entry from clouds.yaml ---
+    - name: Read clouds.yaml for cleanup
+      ansible.builtin.slurp:
+        src: "{{ clouds_yaml_path }}"
+      register: clouds_yaml_final
+      no_log: true
+
+    - name: Remove demo cloud entry from clouds.yaml
+      vars:
+        _existing: "{{ clouds_yaml_final.content | b64decode | from_yaml }}"
+        _updated_clouds: "{{ _existing.clouds | dict2items | rejectattr('key', 'equalto', project_name) | items2dict }}"
+        _updated: "{{ _existing | combine({'clouds': _updated_clouds}) }}"
+      ansible.builtin.copy:
+        content: "{{ _updated | to_nice_yaml(indent=2) }}"
+        dest: "{{ clouds_yaml_path }}"
+        mode: '0600'
+      no_log: true
