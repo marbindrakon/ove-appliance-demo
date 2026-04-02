@@ -72,88 +72,57 @@
   changed_when: false
   when: os_auth_url == ""
 
-- name: Ensure application credential exists for sushy user
-  openstack.cloud.application_credential:
-    auth:
-      auth_url: "{{ os_auth_url }}"
-      username: "{{ project_name }}-sushy"
-      password: "{{ sushy_password }}"
-      project_name: "{{ project_name }}"
-      user_domain_name: "{{ project_domain }}"
-      project_domain_name: "{{ project_domain }}"
-    auth_type: password
-    name: "{{ project_name }}-sushy-credential"
-    state: present
-  register: sushy_app_credential_result
-  no_log: "{{ not debug_mode | default(false) | bool }}"
+# --- Write cloud entries and create application credential ---
 
-- name: Write application credential to cache
-  when:
-    - sushy_app_credential_result.application_credential.secret is defined
-    - sushy_app_credential_result.application_credential.secret is not none
-  block:
-    - name: Write application credential id to cache
-      ansible.builtin.copy:
-        content: "{{ sushy_app_credential_result.application_credential.id }}"
-        dest: ".ove-demo-cache/sushy-app-credential-id"
-        mode: '0600'
-
-    - name: Write application credential secret to cache
-      ansible.builtin.copy:
-        content: "{{ sushy_app_credential_result.application_credential.secret }}"
-        dest: ".ove-demo-cache/sushy-app-credential-secret"
-        mode: '0600'
-      no_log: "{{ not debug_mode | default(false) | bool }}"
-
-- name: Read application credential from cache
-  when: >-
-    sushy_app_credential_result.application_credential.secret is not defined
-    or sushy_app_credential_result.application_credential.secret is none
-  block:
-    - name: Read application credential id from cache
-      ansible.builtin.slurp:
-        src: ".ove-demo-cache/sushy-app-credential-id"
-      register: cached_app_cred_id
-
-    - name: Read application credential secret from cache
-      ansible.builtin.slurp:
-        src: ".ove-demo-cache/sushy-app-credential-secret"
-      register: cached_app_cred_secret
-      no_log: "{{ not debug_mode | default(false) | bool }}"
-
-- name: Store application credential facts from module result
-  when:
-    - sushy_app_credential_result.application_credential.secret is defined
-    - sushy_app_credential_result.application_credential.secret is not none
-  ansible.builtin.set_fact:
-    sushy_app_credential_id: "{{ sushy_app_credential_result.application_credential.id }}"
-    sushy_app_credential_secret: "{{ sushy_app_credential_result.application_credential.secret }}"
-    demo_project_name: "{{ project_name }}"
-    cacheable: true
-
-- name: Store application credential facts from cache
-  when: >-
-    sushy_app_credential_result.application_credential.secret is not defined
-    or sushy_app_credential_result.application_credential.secret is none
-  ansible.builtin.set_fact:
-    sushy_app_credential_id: "{{ cached_app_cred_id.content | b64decode | trim }}"
-    sushy_app_credential_secret: "{{ cached_app_cred_secret.content | b64decode | trim }}"
-    demo_project_name: "{{ project_name }}"
-    cacheable: true
-
-# --- Create a project-scoped cloud entry in clouds.yaml ---
-
-- name: Write demo project cloud entry to clouds.yaml
+- name: Write demo project and sushy user cloud entries to clouds.yaml
   vars:
     _existing: "{{ clouds_yaml_raw.content | b64decode | from_yaml }}"
     _demo_auth: "{{ _existing.clouds[cloud_name].auth | combine({'project_name': project_name, 'project_domain_name': project_domain}) }}"
     _demo_cloud: "{{ _existing.clouds[cloud_name] | combine({'auth': _demo_auth}) }}"
-    _updated: "{{ _existing | combine({'clouds': {project_name: _demo_cloud}}, recursive=True) }}"
+    _sushy_cloud:
+      auth:
+        auth_url: "{{ os_auth_url }}"
+        username: "{{ project_name }}-sushy"
+        password: "{{ sushy_password }}"
+        project_name: "{{ project_name }}"
+        user_domain_name: "{{ project_domain }}"
+        project_domain_name: "{{ project_domain }}"
+      auth_type: password
+    _new_clouds: "{{ {project_name: _demo_cloud, project_name + '-sushy': _sushy_cloud} }}"
+    _updated: "{{ _existing | combine({'clouds': _new_clouds}, recursive=True) }}"
   ansible.builtin.copy:
     content: "{{ _updated | to_nice_yaml(indent=2) }}"
     dest: "{{ clouds_yaml_path }}"
     mode: '0600'
   no_log: "{{ not debug_mode | default(false) | bool }}"
+
+- name: Create application credential for sushy user
+  openstack.cloud.application_credential:
+    cloud: "{{ project_name }}-sushy"
+    name: "{{ project_name }}-sushy-credential"
+    state: present
+  register: sushy_app_credential_result
+  no_log: "{{ not debug_mode | default(false) | bool }}"
+
+- name: Write application credential id to cache
+  ansible.builtin.copy:
+    content: "{{ sushy_app_credential_result.application_credential.id }}"
+    dest: ".ove-demo-cache/sushy-app-credential-id"
+    mode: '0600'
+
+- name: Write application credential secret to cache
+  ansible.builtin.copy:
+    content: "{{ sushy_app_credential_result.application_credential.secret }}"
+    dest: ".ove-demo-cache/sushy-app-credential-secret"
+    mode: '0600'
+  no_log: "{{ not debug_mode | default(false) | bool }}"
+
+- name: Store application credential facts
+  ansible.builtin.set_fact:
+    sushy_app_credential_id: "{{ sushy_app_credential_result.application_credential.id }}"
+    sushy_app_credential_secret: "{{ sushy_app_credential_result.application_credential.secret }}"
+    demo_project_name: "{{ project_name }}"
+    cacheable: true
 
 - name: Set demo cloud name fact
   ansible.builtin.set_fact:

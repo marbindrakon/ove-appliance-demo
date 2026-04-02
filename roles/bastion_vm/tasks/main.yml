@@ -1,19 +1,19 @@
 ---
 - name: Create bastion port on bastion network
   openstack.cloud.port:
-    cloud: "{{ cloud_name }}"
+    cloud: "{{ demo_cloud_name }}"
     name: "{{ project_name }}-bastion-port"
     network: "{{ project_name }}-bastion"
-    project: "{{ project_name }}"
+    security_groups:
+      - "{{ default_sg_id }}"
     state: present
   register: bastion_port
 
 - name: Create bastion port on management network
   openstack.cloud.port:
-    cloud: "{{ cloud_name }}"
+    cloud: "{{ demo_cloud_name }}"
     name: "{{ project_name }}-bastion-mgmt-port"
     network: "{{ project_name }}-mgmt"
-    project: "{{ project_name }}"
     fixed_ips:
       - ip_address: "{{ bastion_mgmt_ip }}"
     port_security_enabled: false
@@ -22,7 +22,7 @@
 
 - name: Create bastion boot volume
   openstack.cloud.volume:
-    cloud: "{{ cloud_name }}"
+    cloud: "{{ demo_cloud_name }}"
     name: "{{ project_name }}-bastion-volume"
     image: "{{ bastion_image }}"
     size: "{{ bastion_disk_gb }}"
@@ -31,14 +31,17 @@
 
 - name: Create bastion VM
   openstack.cloud.server:
-    cloud: "{{ cloud_name }}"
+    cloud: "{{ demo_cloud_name }}"
     name: "{{ project_name }}-bastion"
     flavor: "{{ bastion_flavor }}"
     boot_volume: "{{ bastion_volume.volume.id }}"
     key_name: "{{ ssh_key_name }}"
+    auto_ip: false
     nics:
       - port-id: "{{ bastion_port.port.id }}"
       - port-id: "{{ bastion_mgmt_port.port.id }}"
+    security_groups:
+      - "{{ default_sg_id }}"
     meta:
       role: bastion
     state: present
@@ -46,9 +49,10 @@
 
 - name: Assign floating IP to bastion
   openstack.cloud.floating_ip:
-    cloud: "{{ cloud_name }}"
+    cloud: "{{ demo_cloud_name }}"
     server: "{{ project_name }}-bastion"
     network: "{{ external_network }}"
+    nat_destination: "{{ project_name }}-bastion"
     state: present
   register: bastion_fip
 
@@ -56,6 +60,13 @@
   ansible.builtin.set_fact:
     bastion_floating_ip: "{{ bastion_fip.floating_ip.floating_ip_address }}"
     cacheable: true
+
+- name: Add bastion to in-memory inventory
+  ansible.builtin.add_host:
+    name: "{{ project_name }}-bastion"
+    groups: ove_demo_bastion
+    ansible_host: "{{ bastion_fip.floating_ip.floating_ip_address }}"
+    ansible_user: cloud-user
 
 - name: Wait for bastion SSH to become available
   ansible.builtin.wait_for:
