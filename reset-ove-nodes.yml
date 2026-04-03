@@ -1,0 +1,67 @@
+---
+# reset-ove-nodes.yml — Reset OVE nodes for a fresh OCP installation
+#
+# Rebuilds each OVE node's root volume (boot_index=0) back to the blank sushy
+# image, clearing any previous OCP installation. The USB volume (boot_index=1)
+# is left untouched; it still carries the agent ISO from site.yml. On next
+# boot each node falls through to the USB and performs a clean installation.
+#
+# The bastion and all networking are left untouched.
+#
+# Run from the Ansible controller:
+#   ansible-playbook reset-ove-nodes.yml -i inventory/
+#
+# After this playbook completes the nodes are ACTIVE and booting from the agent
+# ISO on the USB volume. The installer will wait for human input before
+# proceeding.
+#
+# Prerequisites:
+#   - OVE nodes must exist (site.yml completed)
+#   - sushy_blank_image must exist in Glance
+
+- name: Reset OVE nodes for fresh OCP installation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Gather blank image info
+      openstack.cloud.image_info:
+        cloud: "{{ demo_cloud_name }}"
+        image: "{{ sushy_blank_image }}"
+      register: blank_image_facts
+
+    - name: Fail if blank image not found
+      ansible.builtin.fail:
+        msg: "Blank image '{{ sushy_blank_image }}' not found in Glance"
+      when: blank_image_facts.images | length == 0
+
+    - name: Rebuild OVE node root volumes with blank image
+      ansible.builtin.command:
+        cmd: >
+          openstack --os-cloud {{ demo_cloud_name }} server rebuild
+          {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
+          --reimage-boot-volume
+          --image {{ blank_image_facts.images[0].id }}
+      loop: "{{ range(0, ove_node_count | int) | list }}"
+      changed_when: true
+
+    - name: Wait for OVE node VMs to reach ACTIVE state after rebuild
+      ansible.builtin.command:
+        cmd: >
+          openstack --os-cloud {{ demo_cloud_name }} server show
+          {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
+          -f value -c status
+      loop: "{{ range(0, ove_node_count | int) | list }}"
+      register: server_status
+      until: server_status.stdout in ['ACTIVE', 'ERROR']
+      retries: 30
+      delay: 30
+      changed_when: false
+
+    - name: Fail if any VM entered ERROR state during rebuild
+      ansible.builtin.fail:
+        msg: "OVE node {{ item.item }} is in ERROR state after rebuild"
+      when: item.stdout == 'ERROR'
+      loop: "{{ server_status.results }}"
+      loop_control:
+        label: "{{ item.item }}"
