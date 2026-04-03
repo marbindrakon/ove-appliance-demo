@@ -1,7 +1,7 @@
 plugin: openstack.cloud.openstack
 
 only_clouds:
-  - "{{ cloud_name }}"
+  - lab-infra
 
 expand_hostvars: true
 fail_on_errors: true

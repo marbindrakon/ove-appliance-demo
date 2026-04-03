@@ -21,7 +21,8 @@ sushy_password: "{{ lookup('password', '.ove-demo-cache/sushy-password chars=asc
 ssh_key_name: ""  # Must be set by operator
 
 # OpenStack auth URL (needed for sushy-emulator clouds.yaml)
-os_auth_url: ""  # Must be set by operator (e.g., https://identity.example.com:5000/v3)
+os_auth_url: ""    # Must be set by operator (e.g., https://identity.example.com:5000/v3)
+os_region: "RegionOne"  # Must be set by operator — OpenStack region name for sushy-emulator
 
 # Subscription
 subscription_type: "cdn"  # "cdn" for Red Hat CDN, "satellite" for Satellite
@@ -40,6 +41,8 @@ ove_node_flavor: "g1.4xlarge"
 ove_node_count: 4
 ove_node_name_prefix: "ove-node"
 ove_node_disk_gb: 250
+# CD-ROM volume holds the agent ISO at boot time — must be >= ISO size (agent ISO is ~41 GB)
+ove_cdrom_volume_gb: 50
 
 # OVE cluster DNS
 cluster_name: "ove"

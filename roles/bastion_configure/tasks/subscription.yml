@@ -4,6 +4,7 @@
     name: "{{ satellite_url }}/pub/katello-ca-consumer-latest.noarch.rpm"
     state: present
     disable_gpg_check: true
+    validate_certs: false
   when: subscription_type == 'satellite'
 
 - name: Update CA trust

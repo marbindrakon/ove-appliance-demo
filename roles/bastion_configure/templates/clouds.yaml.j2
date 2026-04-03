@@ -5,5 +5,5 @@ clouds:
       auth_url: "{{ os_auth_url }}"
       application_credential_id: "{{ sushy_app_credential_id }}"
       application_credential_secret: "{{ sushy_app_credential_secret }}"
-    region_name: "{{ os_region | default('RegionOne') }}"
+    region_name: "{{ os_region }}"
     cacert: /etc/pki/tls/certs/ca-bundle.crt

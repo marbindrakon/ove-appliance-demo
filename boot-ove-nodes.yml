@@ -1,0 +1,59 @@
+---
+# boot-ove-nodes.yml — Boot OVE nodes from agent ISO via OpenStack
+#
+# Uploads the agent ISO to Glance (idempotent), rebuilds each OVE node's
+# CD-ROM volume (boot_index: 0) with the ISO, and waits for the VMs to
+# reach ACTIVE state booted from the ISO.
+#
+# Run from the Ansible controller:
+#   ansible-playbook boot-ove-nodes.yml -i inventory/
+#
+# Prerequisites:
+#   - OVE nodes must be created with the two-volume layout (site.yml)
+#   - ove_agent_iso_path must point to the agent ISO on the controller
+
+- name: Boot OVE nodes from agent ISO
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Upload OVE agent ISO to Glance
+      openstack.cloud.image:
+        cloud: "{{ demo_cloud_name }}"
+        name: "{{ ove_agent_iso_path | basename }}"
+        filename: "{{ ove_agent_iso_path }}"
+        disk_format: raw
+        container_format: bare
+        state: present
+      register: ove_iso_image
+
+    - name: Rebuild OVE node VMs from agent ISO
+      ansible.builtin.command:
+        cmd: >
+          openstack --os-cloud {{ demo_cloud_name }} server rebuild
+          {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
+          --reimage-boot-volume
+          --image {{ ove_iso_image.image.id }}
+      loop: "{{ range(0, ove_node_count | int) | list }}"
+      changed_when: true
+
+    - name: Wait for OVE node VMs to reach ACTIVE state
+      ansible.builtin.command:
+        cmd: >
+          openstack --os-cloud {{ demo_cloud_name }} server show
+          {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
+          -f value -c status
+      loop: "{{ range(0, ove_node_count | int) | list }}"
+      register: server_status
+      until: server_status.stdout in ['ACTIVE', 'ERROR']
+      retries: 30
+      delay: 30
+      changed_when: false
+
+    - name: Fail if any VM entered ERROR state
+      ansible.builtin.fail:
+        msg: "OVE node {{ item.item }} is in ERROR state after rebuild"
+      when: item.stdout == 'ERROR'
+      loop: "{{ server_status.results }}"
+      loop_control:
+        label: "{{ item.item }}"

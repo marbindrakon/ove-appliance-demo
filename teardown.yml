@@ -57,6 +57,13 @@
         state: absent
       loop: "{{ range(0, ove_node_count | int) | list }}"
 
+    - name: Delete OVE node CD-ROM volumes
+      openstack.cloud.volume:
+        cloud: "{{ demo_cloud_name }}"
+        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-cdrom"
+        state: absent
+      loop: "{{ range(0, ove_node_count | int) | list }}"
+
     # --- Delete OVE node trunk ports ---
     - name: Delete OVE node trunks
       openstack.cloud.trunk:

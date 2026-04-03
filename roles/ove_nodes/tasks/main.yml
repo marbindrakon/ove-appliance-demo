@@ -8,25 +8,78 @@
     node_idx: "{{ node_trunk_pair[0] }}"
     trunk_idx: "{{ node_trunk_pair[1] }}"
 
+# Sushy-tools virtual media boot via volume rebuild requires two volumes per node:
+#   boot_index: 0  device_type: cdrom  disk_bus: scsi  — initially blank, rebuilt with ISO at boot time
+#   boot_index: 1  device_type: disk                   — OS install target
+# See: https://docs.openstack.org/sushy-tools/latest/user/dynamic-emulator.html#virtual-media-boot-via-volume-rebuild
+
+- name: Create OVE node CD-ROM volumes
+  openstack.cloud.volume:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-cdrom"
+    image: "{{ sushy_blank_image }}"
+    size: "{{ ove_cdrom_volume_gb }}"
+    state: present
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+
 - name: Create OVE node boot volumes
   openstack.cloud.volume:
-    cloud: "{{ cloud_name }}"
+    cloud: "{{ demo_cloud_name }}"
     name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-volume"
     image: "{{ sushy_blank_image }}"
     size: "{{ ove_node_disk_gb }}"
     state: present
   loop: "{{ range(0, ove_node_count | int) | list }}"
 
-- name: Create OVE node VMs
-  openstack.cloud.server:
-    cloud: "{{ cloud_name }}"
-    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
-    flavor: "{{ ove_node_flavor }}"
-    boot_volume: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-volume"
-    nics:
-      - port-id: "{{ hostvars[inventory_hostname]['trunk0_port_id_node' + item | string] }}"
-      - port-id: "{{ hostvars[inventory_hostname]['trunk1_port_id_node' + item | string] }}"
-    meta:
-      role: ove_node
-    state: present
+- name: Gather OVE node CD-ROM volume IDs
+  openstack.cloud.volume_info:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-cdrom"
   loop: "{{ range(0, ove_node_count | int) | list }}"
+  register: cdrom_volume_facts
+
+- name: Gather OVE node boot volume IDs
+  openstack.cloud.volume_info:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-volume"
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  register: boot_volume_facts
+
+# openstack.cloud.server requires image or boot_volume even with block_device_mapping_v2,
+# so use the CLI directly to pass BDM v2 with the required device_type and boot_index.
+- name: Check which OVE node VMs already exist
+  ansible.builtin.command:
+    cmd: >
+      openstack --os-cloud {{ demo_cloud_name }} server show
+      {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
+      -f value -c status
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  register: vm_status
+  failed_when: false
+  changed_when: false
+
+- name: Create OVE node VMs
+  ansible.builtin.command:
+    argv:
+      - openstack
+      - "--os-cloud"
+      - "{{ demo_cloud_name }}"
+      - server
+      - create
+      - "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
+      - "--flavor"
+      - "{{ ove_node_flavor }}"
+      - "--block-device"
+      - "uuid={{ cdrom_volume_facts.results[item | int].volumes[0].id }},source_type=volume,destination_type=volume,boot_index=0,device_type=cdrom,disk_bus=scsi,delete_on_termination=false"
+      - "--block-device"
+      - "uuid={{ boot_volume_facts.results[item | int].volumes[0].id }},source_type=volume,destination_type=volume,boot_index=1,device_type=disk,delete_on_termination=false"
+      - "--nic"
+      - "port-id={{ hostvars[inventory_hostname]['trunk0_port_id_node' + item | string] }}"
+      - "--nic"
+      - "port-id={{ hostvars[inventory_hostname]['trunk1_port_id_node' + item | string] }}"
+      - "--property"
+      - "role=ove_node"
+      - "--wait"
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  when: vm_status.results[item | int].rc != 0
+  changed_when: true
