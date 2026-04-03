@@ -41,14 +41,26 @@ ove_node_flavor: "g1.4xlarge"
 ove_node_count: 4
 ove_node_name_prefix: "ove-node"
 ove_node_disk_gb: 250
-# CD-ROM volume holds the agent ISO at boot time — must be >= ISO size (agent ISO is ~41 GB)
-ove_cdrom_volume_gb: 50
+# USB volume is pre-provisioned from the agent ISO — must be >= ISO size (agent ISO is ~41 GB)
+ove_usb_volume_gb: 50
+# Management IPs for OVE nodes — one per node, reserved via fixed IP on trunk0 parent port
+ove_node_mgmt_ips:
+  - "10.10.0.11"
+  - "10.10.0.12"
+  - "10.10.0.13"
+  - "10.10.0.14"
 
 # OVE cluster DNS
 cluster_name: "ove"
 base_domain: "example.com"
 api_vip: "10.10.0.100"
 ingress_vip: "10.10.0.101"
+
+# External DNS forwarders — used by BIND on the bastion and pushed to the bastion mgmt
+# interface via per-port DHCP opts to override the subnet-level dns_nameservers (bastion_mgmt_ip).
+dns_forwarders:
+  - "8.8.8.8"
+  - "8.8.4.4"
 
 # Sushy emulator
 sushy_blank_image: "sushy-tools-blank-image"
@@ -59,7 +71,6 @@ ove_agent_iso_path: "{{ playbook_dir }}/agent-ove.x86_64.iso"
 
 # Networks
 bastion_network_cidr: "10.0.0.0/24"
-trunk_native_cidr: "10.99.0.0/24"
 mgmt_network_cidr: "10.10.0.0/24"
 storage_network_cidr: "10.20.0.0/24"
 workload1_network_cidr: "192.168.10.0/24"
@@ -79,14 +90,13 @@ demo_networks:
     cidr: "{{ bastion_network_cidr }}"
     enable_dhcp: true
     port_security_enabled: true
-  - name: "{{ project_name }}-trunk-native"
-    cidr: "{{ trunk_native_cidr }}"
-    enable_dhcp: false
-    port_security_enabled: false
+    dns_nameservers: "{{ dns_forwarders }}"
   - name: "{{ project_name }}-mgmt"
     cidr: "{{ mgmt_network_cidr }}"
-    enable_dhcp: false
+    enable_dhcp: true
     port_security_enabled: false
+    dns_nameservers:
+      - "{{ bastion_mgmt_ip }}"
   - name: "{{ project_name }}-storage"
     cidr: "{{ storage_network_cidr }}"
     enable_dhcp: false

@@ -14,6 +14,7 @@
     network_name: "{{ item.name }}"
     cidr: "{{ item.cidr }}"
     enable_dhcp: "{{ item.enable_dhcp }}"
+    dns_nameservers: "{{ item.dns_nameservers | default(omit) }}"
     state: present
   loop: "{{ demo_networks }}"
 

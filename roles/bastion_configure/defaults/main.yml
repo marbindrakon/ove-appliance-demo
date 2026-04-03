@@ -5,11 +5,6 @@
 #   sushy_port, sushy_username, sushy_password,
 #   sushy_blank_image, sushy_app_credential_id, sushy_app_credential_secret
 
-# DNS
-dns_forwarders:
-  - 8.8.8.8
-  - 8.8.4.4
-
 # NTP
 ntp_upstream_servers:
   - 0.rhel.pool.ntp.org

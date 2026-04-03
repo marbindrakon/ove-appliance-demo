@@ -17,6 +17,12 @@
     fixed_ips:
       - ip_address: "{{ bastion_mgmt_ip }}"
     port_security_enabled: false
+    # Override subnet-level dns_nameservers (bastion_mgmt_ip) so the bastion uses
+    # external resolvers on this interface rather than itself (BIND isn't running yet
+    # when subscription and package installs happen).
+    extra_dhcp_opts:
+      - opt_name: "dns-nameservers"
+        opt_value: "{{ dns_forwarders | join(',') }}"
     state: present
   register: bastion_mgmt_port
 

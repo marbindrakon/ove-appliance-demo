@@ -57,12 +57,19 @@
         state: absent
       loop: "{{ range(0, ove_node_count | int) | list }}"
 
-    - name: Delete OVE node CD-ROM volumes
+    - name: Delete OVE node USB volumes
       openstack.cloud.volume:
         cloud: "{{ demo_cloud_name }}"
-        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-cdrom"
+        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-usb"
         state: absent
       loop: "{{ range(0, ove_node_count | int) | list }}"
+
+    - name: Delete OVE agent ISO Glance image
+      openstack.cloud.image:
+        cloud: "{{ demo_cloud_name }}"
+        name: "{{ ove_agent_iso_path | basename }}"
+        state: absent
+      failed_when: false
 
     # --- Delete OVE node trunk ports ---
     - name: Delete OVE node trunks
@@ -81,7 +88,7 @@
       loop: >-
         {{ range(0, ove_node_count | int)
            | product([0, 1])
-           | product([mgmt_vlan_id, storage_vlan_id, workload1_vlan_id, workload2_vlan_id, workload3_vlan_id])
+           | product([storage_vlan_id, workload1_vlan_id, workload2_vlan_id, workload3_vlan_id])
            | map('flatten')
            | list }}
 

@@ -4,12 +4,17 @@
   ansible.builtin.set_fact:
     trunk_module_sub_ports: []
 
+# trunk0 parent port carries the primary management NIC — reserve a fixed IP and set an
+# infinite DHCP lease so coreos-install sees a stable address and writes it as static.
+# trunk1 parent port is on the same network for redundancy but gets a dynamic IP.
 - name: "Create parent port for {{ ove_node_name_prefix }}-{{ node_idx }} trunk {{ trunk_idx }}"
   openstack.cloud.port:
     cloud: "{{ demo_cloud_name }}"
     name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}-trunk{{ trunk_idx }}-parent"
-    network: "{{ project_name }}-trunk-native"
+    network: "{{ project_name }}-mgmt"
     port_security_enabled: false
+    fixed_ips: "{{ [{'ip_address': ove_node_mgmt_ips[node_idx | int]}] if trunk_idx | int == 0 else [] }}"
+    extra_dhcp_opts: "{{ [{'opt_name': 'lease-time', 'opt_value': '4294967295'}] if trunk_idx | int == 0 else omit }}"
     state: present
   register: parent_port
 
@@ -21,18 +26,31 @@
     port_security_enabled: false
     state: present
   loop: "{{ trunk_subports }}"
-  register: sub_ports
 
+# Build sub-port list using port names (not IDs). openstack.cloud.trunk's update path
+# matches sub-ports by comparing port name to the 'port' key — passing IDs causes a
+# mismatch (sp['name'] != port_id) and sub-ports are never added.
 - name: "Build sub-port list for {{ ove_node_name_prefix }}-{{ node_idx }} trunk {{ trunk_idx }}"
   ansible.builtin.set_fact:
     trunk_module_sub_ports: >-
       {{ (trunk_module_sub_ports | default([])) +
-         [{'port': item.port.id,
+         [{'port': project_name + '-' + ove_node_name_prefix + '-' + node_idx | string + '-trunk' + trunk_idx | string + '-vlan' + item.vlan_id | string,
            'segmentation_type': 'vlan',
-           'segmentation_id': item.item.vlan_id}] }}
-  loop: "{{ sub_ports.results }}"
+           'segmentation_id': item.vlan_id}] }}
+  loop: "{{ trunk_subports }}"
 
+# openstack.cloud.trunk silently ignores sub_ports on creation — _create() only passes
+# name and port_id to the API. The first call creates the trunk; the second call hits
+# the update path (_build_update / add_trunk_subports) which correctly attaches them.
 - name: "Create trunk for {{ ove_node_name_prefix }}-{{ node_idx }} trunk {{ trunk_idx }}"
+  openstack.cloud.trunk:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}-trunk{{ trunk_idx }}"
+    port: "{{ parent_port.port.id }}"
+    sub_ports: "{{ trunk_module_sub_ports }}"
+    state: present
+
+- name: "Ensure sub-ports attached to trunk {{ trunk_idx }} for {{ ove_node_name_prefix }}-{{ node_idx }}"
   openstack.cloud.trunk:
     cloud: "{{ demo_cloud_name }}"
     name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}-trunk{{ trunk_idx }}"
