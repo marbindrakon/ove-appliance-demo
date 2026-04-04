@@ -7,15 +7,6 @@
 # On first boot the root volume is blank, so the VM falls through to the USB and runs the
 # agent installer, which writes OCP to the root volume. Subsequent reboots boot from root.
 
-- name: Upload OVE agent ISO to Glance
-  openstack.cloud.image:
-    cloud: "{{ demo_cloud_name }}"
-    name: "{{ ove_agent_iso_path | basename }}"
-    filename: "{{ ove_agent_iso_path }}"
-    disk_format: raw
-    container_format: bare
-    state: present
-
 - name: Create OVE node root volumes
   openstack.cloud.volume:
     cloud: "{{ demo_cloud_name }}"
@@ -29,7 +20,7 @@
   openstack.cloud.volume:
     cloud: "{{ demo_cloud_name }}"
     name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-usb"
-    image: "{{ ove_agent_iso_path | basename }}"
+    image: "{{ ove_agent_glance_image | default(ove_agent_iso_path | basename) }}"
     size: "{{ ove_usb_volume_gb }}"
     state: present
   loop: "{{ range(0, ove_node_count | int) | list }}"

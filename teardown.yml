@@ -79,7 +79,9 @@
         name: "{{ ove_agent_iso_path | basename }}"
         state: absent
       failed_when: false
-      when: install_method | default('ove') == 'ove'
+      when:
+        - install_method | default('ove') == 'ove'
+        - ove_agent_glance_image | default('') | length == 0
 
     - name: Delete appliance Glance image
       openstack.cloud.image:
@@ -87,7 +89,9 @@
         name: "{{ appliance_image_name | default('openshift-appliance') }}"
         state: absent
       failed_when: false
-      when: install_method | default('ove') == 'appliance'
+      when:
+        - install_method | default('ove') == 'appliance'
+        - appliance_glance_image | default('') | length == 0
 
     # --- Delete OVE node trunk ports ---
     - name: Delete OVE node trunks

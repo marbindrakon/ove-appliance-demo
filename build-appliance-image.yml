@@ -1,0 +1,39 @@
+# build-appliance-image.yml — Build appliance.raw locally for later use
+#
+# Produces: {{ playbook_dir }}/appliance-assets/appliance.raw
+# Does NOT upload to Glance. Run site.yml (appliance mode) to upload after building.
+---
+- name: Build appliance disk image locally
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    appliance_assets_dir: "{{ playbook_dir }}/appliance-assets"
+
+  tasks:
+    - name: Create local appliance assets directory
+      ansible.builtin.file:
+        path: "{{ appliance_assets_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Template appliance-config.yaml (no SSH key for local build)
+      ansible.builtin.template:
+        src: roles/appliance_image/templates/appliance-config.yaml.j2
+        dest: "{{ appliance_assets_dir }}/appliance-config.yaml"
+        mode: "0644"
+      no_log: "{{ not debug_mode | default(false) | bool }}"
+
+    - name: Build appliance disk image
+      ansible.builtin.command:
+        cmd: >
+          podman run --rm --privileged --net=host
+          --name appliance-builder
+          -v {{ appliance_assets_dir }}:/assets:Z
+          {{ appliance_container_image }}
+          build
+      changed_when: true
+
+    - name: Report output location
+      ansible.builtin.debug:
+        msg: "Appliance image built: {{ appliance_assets_dir }}/appliance.raw"

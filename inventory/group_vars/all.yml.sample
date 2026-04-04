@@ -71,6 +71,9 @@ sushy_port: 8000
 
 # OVE agent ISO path on the Ansible controller (only used when install_method == "ove")
 ove_agent_iso_path: "{{ playbook_dir }}/agent-ove.x86_64.iso"
+# Existing Glance image name or ID to use as the agent ISO (optional).
+# If set, skips the local ISO upload and uses this image directly. Not deleted on teardown.
+ove_agent_glance_image: ""
 
 # Appliance mode settings (only used when install_method == "appliance")
 appliance_ocp_version: "4.20"
@@ -83,6 +86,12 @@ appliance_container_image: "quay.io/redhat-user-workloads/crt-nshift-appliance-t
 pull_secret: ''  # Must be set by operator — obtain from console.redhat.com
 # SSH key for the appliance image is auto-generated on the bastion (cloud-user)
 # and read directly by the appliance_image role during the build
+# Path to a pre-built appliance.raw on the Ansible controller (optional).
+# If set, uploads directly from the controller to Glance, skipping the bastion build.
+appliance_image_path: ""
+# Existing Glance image name or ID to use as the appliance image (optional).
+# If set, skips both the bastion build and any local upload. Not deleted on teardown.
+appliance_glance_image: ""
 
 # Networks
 bastion_network_cidr: "10.0.0.0/24"

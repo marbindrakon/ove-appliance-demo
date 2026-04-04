@@ -14,8 +14,6 @@ source .venv/bin/activate
 ansible-playbook site.yml             # Full build (idempotent)
 ansible-playbook teardown.yml         # Destroy everything including project
 ansible-playbook reset-ove-nodes.yml  # Reset nodes (OVE: blank root; appliance: re-factory)
-ansible-playbook unmount-ove-nodes.yml  # Reimage USB volumes to blank (OVE mode only)
-ansible-playbook boot-ove-nodes.yml     # Re-provision USB from agent ISO (OVE mode only)
 ```
 
 ## Configuration
@@ -24,7 +22,7 @@ ansible-playbook boot-ove-nodes.yml     # Re-provision USB from agent ISO (OVE m
 
 `.ove-demo-cache/` holds generated secrets (project suffix, sushy password, app credential). Gitignored. Delete to reset the project identity.
 
-For appliance mode, set `install_method: "appliance"` and provide `pull_secret` (from console.redhat.com). The appliance image config (`appliance-config.yaml`) is templated from inventory variables including `appliance_ocp_version`, `appliance_operators`, and related settings in `roles/appliance_image/defaults/main.yml`.
+For appliance mode, set `install_method: "appliance"` and provide `pull_secret` (from console.redhat.com). The appliance image config (`appliance-config.yaml`) is templated from inventory variables including `appliance_ocp_version`, `appliance_operators`, and related settings in `roles/appliance_image/defaults/main.yml`. Three image supply options exist (in priority order): set `appliance_glance_image` to reference an existing Glance image (not deleted on teardown), set `appliance_image_path` to upload a pre-built `appliance.raw` from the controller, or leave both unset to build on the bastion. For OVE mode, set `ove_agent_glance_image` to reference an existing Glance image instead of uploading a local ISO.
 
 ## Architecture
 

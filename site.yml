@@ -29,19 +29,49 @@
   roles:
     - bastion_configure
 
-# Play 3: Build appliance image on bastion (appliance mode only)
+# Play 3: Build appliance image on bastion (appliance mode only, skipped if image supplied)
 - name: Build appliance image on bastion
   hosts: ove_demo_bastion
   gather_facts: false
   become: true
   roles:
     - role: appliance_image
-      when: install_method | default('ove') == 'appliance'
+      when:
+        - install_method | default('ove') == 'appliance'
+        - appliance_image_path | default('') | length == 0
+        - appliance_glance_image | default('') | length == 0
 
 # Play 4: Create OVE node trunks and VMs
 - name: Create OVE nodes
   hosts: localhost
   connection: local
   gather_facts: false
+  pre_tasks:
+    # --- Appliance mode: upload image from controller if local path supplied ---
+    - name: Upload pre-built appliance image from controller to Glance
+      openstack.cloud.image:
+        cloud: "{{ demo_cloud_name }}"
+        name: "{{ appliance_image_name }}"
+        filename: "{{ appliance_image_path }}"
+        disk_format: raw
+        container_format: bare
+        state: present
+      when:
+        - install_method | default('ove') == 'appliance'
+        - appliance_image_path | default('') | length > 0
+        - appliance_glance_image | default('') | length == 0
+
+    # --- OVE mode: upload ISO from controller (skipped if existing Glance image supplied) ---
+    - name: Upload OVE agent ISO to Glance
+      openstack.cloud.image:
+        cloud: "{{ demo_cloud_name }}"
+        name: "{{ ove_agent_iso_path | basename }}"
+        filename: "{{ ove_agent_iso_path }}"
+        disk_format: raw
+        container_format: bare
+        state: present
+      when:
+        - install_method | default('ove') == 'ove'
+        - ove_agent_glance_image | default('') | length == 0
   roles:
     - ove_nodes

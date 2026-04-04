@@ -52,13 +52,13 @@
     - name: Gather appliance image info
       openstack.cloud.image_info:
         cloud: "{{ demo_cloud_name }}"
-        image: "{{ appliance_image_name | default('openshift-appliance') }}"
+        image: "{{ appliance_glance_image | default(appliance_image_name) }}"
       register: appliance_image_facts
       when: install_method | default('ove') == 'appliance'
 
     - name: Fail if appliance image not found
       ansible.builtin.fail:
-        msg: "Appliance image '{{ appliance_image_name | default('openshift-appliance') }}' not found in Glance"
+        msg: "Appliance image '{{ appliance_glance_image | default(appliance_image_name) }}' not found in Glance"
       when:
         - install_method | default('ove') == 'appliance'
         - appliance_image_facts.images | length == 0

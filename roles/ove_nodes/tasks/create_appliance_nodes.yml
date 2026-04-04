@@ -9,7 +9,7 @@
   openstack.cloud.volume:
     cloud: "{{ demo_cloud_name }}"
     name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-volume"
-    image: "{{ appliance_image_name }}"
+    image: "{{ appliance_glance_image | default(appliance_image_name) }}"
     size: "{{ appliance_disk_size_gb }}"
     state: present
   loop: "{{ range(0, ove_node_count | int) | list }}"
