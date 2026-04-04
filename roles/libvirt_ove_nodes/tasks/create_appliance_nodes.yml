@@ -1,0 +1,33 @@
+---
+# create_appliance_nodes.yml — Appliance factory imaging method for libvirt
+#
+# Two disks per node:
+#   vda: appliance.raw boot disk (pre-built OCP agent installer)
+#   sda: blank CD-ROM for virtual media config delivery
+
+- name: Copy appliance image for each node boot disk
+  ansible.builtin.copy:
+    src: "{{ appliance_image_on_kvm }}"
+    dest: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.raw"
+    remote_src: true
+    force: false
+    mode: "0644"
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+
+- name: Create blank CD-ROM images for virtual media
+  ansible.builtin.command:
+    cmd: >
+      qemu-img create -f raw
+      {{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-cdrom.iso
+      {{ appliance_cdrom_volume_gb }}G
+    creates: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-cdrom.iso"
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+
+- name: Define and start appliance node VMs
+  ansible.builtin.include_tasks: define_node.yml
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  loop_control:
+    loop_var: node_idx
+  vars:
+    _boot_disk_format: raw
+    _boot_disk_ext: raw

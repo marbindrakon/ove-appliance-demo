@@ -1,0 +1,62 @@
+<domain type='kvm'>
+  <name>{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}</name>
+  <memory unit='MiB'>{{ ove_node_ram_mb }}</memory>
+  <vcpu>{{ ove_node_vcpus }}</vcpu>
+  <os firmware='efi'>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode='host-passthrough'/>
+  <devices>
+    <!-- Boot disk -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='{{ _boot_disk_format }}'/>
+      <source file='{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}-boot.{{ _boot_disk_ext }}'/>
+      <target dev='vda' bus='virtio'/>
+      <boot order='1'/>
+    </disk>
+{% if install_method | default('ove') == 'ove' %}
+    <!-- USB volume: agent ISO -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}-usb.raw'/>
+      <target dev='vdb' bus='virtio'/>
+      <boot order='2'/>
+    </disk>
+{% else %}
+    <!-- CD-ROM volume for virtual media -->
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}-cdrom.iso'/>
+      <target dev='sda' bus='sata'/>
+    </disk>
+{% endif %}
+    <!-- NIC 1: trunk0 on OVS -->
+    <interface type='bridge'>
+      <source bridge='{{ ovs_bridge_name }}'/>
+      <virtualport type='openvswitch'/>
+      <mac address='{{ mac_prefix }}:01:{{ "%02x" | format(node_idx | int + 11) }}'/>
+      <target dev='ovenode{{ node_idx }}-t0'/>
+      <model type='virtio'/>
+    </interface>
+    <!-- NIC 2: trunk1 on OVS -->
+    <interface type='bridge'>
+      <source bridge='{{ ovs_bridge_name }}'/>
+      <virtualport type='openvswitch'/>
+      <mac address='{{ mac_prefix }}:02:{{ "%02x" | format(node_idx | int + 11) }}'/>
+      <target dev='ovenode{{ node_idx }}-t1'/>
+      <model type='virtio'/>
+    </interface>
+    <serial type='pty'>
+      <target port='0'/>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+    <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'/>
+  </devices>
+</domain>

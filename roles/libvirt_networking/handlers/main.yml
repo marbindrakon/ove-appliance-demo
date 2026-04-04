@@ -1,0 +1,6 @@
+---
+- name: restart dnsmasq-ove-mgmt
+  ansible.builtin.systemd:
+    name: dnsmasq-ove-mgmt
+    state: restarted
+    daemon_reload: true

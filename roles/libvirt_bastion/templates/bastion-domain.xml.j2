@@ -1,0 +1,50 @@
+<domain type='kvm'>
+  <name>{{ project_name }}-bastion</name>
+  <memory unit='MiB'>{{ bastion_ram_mb }}</memory>
+  <vcpu>{{ bastion_vcpus }}</vcpu>
+  <os firmware='efi'>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode='host-passthrough'/>
+  <devices>
+    <!-- Boot disk -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2'/>
+      <source file='{{ libvirt_pool_path }}/{{ project_name }}-bastion-boot.qcow2'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <!-- Cloud-init config drive -->
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <source file='{{ libvirt_pool_path }}/{{ project_name }}-bastion-cidata.iso'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+    <!-- NIC 1: NAT network for external access -->
+    <interface type='network'>
+      <source network='{{ libvirt_nat_network_name }}'/>
+      <mac address='{{ bastion_nat_mac }}'/>
+      <model type='virtio'/>
+    </interface>
+    <!-- NIC 2: OVS bridge for mgmt network -->
+    <interface type='bridge'>
+      <source bridge='{{ ovs_bridge_name }}'/>
+      <virtualport type='openvswitch'/>
+      <mac address='{{ bastion_mgmt_mac }}'/>
+      <target dev='bastion-mgmt'/>
+      <model type='virtio'/>
+    </interface>
+    <serial type='pty'>
+      <target port='0'/>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+    <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'/>
+  </devices>
+</domain>

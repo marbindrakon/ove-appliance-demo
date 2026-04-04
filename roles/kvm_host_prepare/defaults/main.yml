@@ -1,0 +1,3 @@
+---
+libvirt_pool_name: "ove-demo"
+libvirt_pool_path: "/var/lib/libvirt/images/ove-demo"

@@ -1,0 +1,64 @@
+---
+- name: Install libvirt and OVS packages
+  ansible.builtin.dnf:
+    name:
+      - libvirt
+      - libvirt-daemon-kvm
+      - qemu-kvm
+      - virt-install
+      - python3-libvirt
+      - python3-lxml
+      - genisoimage
+      - openvswitch3.3
+    state: present
+
+- name: Load vhost_net kernel module
+  community.general.modprobe:
+    name: vhost_net
+    state: present
+    persistent: present
+
+- name: Enable and start libvirtd
+  ansible.builtin.systemd:
+    name: libvirtd
+    state: started
+    enabled: true
+
+- name: Enable and start openvswitch
+  ansible.builtin.systemd:
+    name: openvswitch
+    state: started
+    enabled: true
+
+- name: Create libvirt storage pool directory
+  ansible.builtin.file:
+    path: "{{ libvirt_pool_path }}"
+    state: directory
+    mode: "0755"
+
+- name: Check if storage pool exists
+  ansible.builtin.command:
+    cmd: virsh pool-info {{ libvirt_pool_name }}
+  register: pool_check
+  failed_when: false
+  changed_when: false
+
+- name: Define libvirt storage pool
+  ansible.builtin.command:
+    cmd: >
+      virsh pool-define-as {{ libvirt_pool_name }} dir
+      --target {{ libvirt_pool_path }}
+  when: pool_check.rc != 0
+  changed_when: true
+
+- name: Start storage pool
+  ansible.builtin.command:
+    cmd: virsh pool-start {{ libvirt_pool_name }}
+  when: pool_check.rc != 0
+  changed_when: true
+
+- name: Autostart storage pool
+  ansible.builtin.command:
+    cmd: virsh pool-autostart {{ libvirt_pool_name }}
+  when: pool_check.rc != 0
+  changed_when: true

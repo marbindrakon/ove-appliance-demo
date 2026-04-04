@@ -1,0 +1,21 @@
+---
+# define_node.yml — Define and start a single OVE node VM
+# Called in a loop with node_idx set by the caller
+
+- name: Check if node {{ node_idx }} domain already exists
+  community.libvirt.virt:
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}"
+    command: info
+  register: node_domain_info
+  failed_when: false
+
+- name: Define node {{ node_idx }} domain
+  community.libvirt.virt:
+    command: define
+    xml: "{{ lookup('template', 'ove-node-domain.xml.j2') }}"
+  when: "project_name ~ '-' ~ ove_node_name_prefix ~ '-' ~ node_idx | string not in (node_domain_info | default({}))"
+
+- name: Start node {{ node_idx }}
+  community.libvirt.virt:
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}"
+    state: running

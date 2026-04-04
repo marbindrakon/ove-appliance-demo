@@ -1,0 +1,15 @@
+---
+ove_node_vcpus: 16
+ove_node_ram_mb: 65536
+ove_node_disk_gb: 250
+ove_node_name_prefix: "ove-node"
+
+# VLAN IDs for OVS trunk ports
+mgmt_vlan_id: 10
+storage_vlan_id: 20
+workload1_vlan_id: 30
+workload2_vlan_id: 40
+workload3_vlan_id: 50
+
+# Appliance image location on KVM host (set by pre_tasks or appliance_image role)
+appliance_image_on_kvm: "{{ libvirt_pool_path }}/appliance-base.raw"

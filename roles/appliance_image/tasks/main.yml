@@ -4,6 +4,21 @@
     cloud: sushy-cloud
     image: "{{ appliance_image_name }}"
   register: appliance_image_info
+  when: infra_backend | default('openstack') == 'openstack'
+
+- name: Check if appliance image already exists on disk
+  ansible.builtin.stat:
+    path: "{{ appliance_assets_dir }}/appliance.raw"
+  register: appliance_image_file
+  when: infra_backend | default('openstack') == 'libvirt'
+
+- name: Set appliance exists flag
+  ansible.builtin.set_fact:
+    _appliance_already_exists: >-
+      {{ (infra_backend | default('openstack') == 'openstack' and
+          (appliance_image_info.images | default([])) | length > 0) or
+         (infra_backend | default('openstack') == 'libvirt' and
+          (appliance_image_file.stat.exists | default(false))) }}
 
 - name: Read cloud-user SSH public key
   ansible.builtin.slurp:
@@ -15,7 +30,7 @@
     bastion_ssh_public_key: "{{ bastion_ssh_key_raw.content | b64decode | trim }}"
 
 - name: Build and upload appliance image
-  when: appliance_image_info.images | length == 0
+  when: not _appliance_already_exists | bool
   block:
     - name: Create appliance assets directory
       ansible.builtin.file:
@@ -48,8 +63,9 @@
         disk_format: raw
         container_format: bare
         state: present
+      when: infra_backend | default('openstack') == 'openstack'
 
-- name: Appliance image already exists in Glance
+- name: Appliance image already exists
   ansible.builtin.debug:
-    msg: "Appliance image '{{ appliance_image_name }}' already exists in Glance, skipping build"
-  when: appliance_image_info.images | length > 0
+    msg: "Appliance image already exists, skipping build"
+  when: _appliance_already_exists | bool

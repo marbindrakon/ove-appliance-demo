@@ -1,0 +1,32 @@
+---
+# create_ove_nodes.yml — OVE agent ISO method for libvirt
+#
+# Two disks per node:
+#   vda: blank qcow2 boot disk (OS install target)
+#   vdb: agent ISO (virtio disk, boot fallback)
+
+- name: Create blank boot disks for OVE nodes
+  ansible.builtin.command:
+    cmd: >
+      qemu-img create -f qcow2
+      {{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2
+      {{ ove_node_disk_gb }}G
+    creates: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2"
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+
+- name: Copy agent ISO for each OVE node
+  ansible.builtin.copy:
+    src: "{{ ove_agent_iso_path }}"
+    dest: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-usb.raw"
+    force: false
+    mode: "0644"
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+
+- name: Define and start OVE node VMs
+  ansible.builtin.include_tasks: define_node.yml
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  loop_control:
+    loop_var: node_idx
+  vars:
+    _boot_disk_format: qcow2
+    _boot_disk_ext: qcow2

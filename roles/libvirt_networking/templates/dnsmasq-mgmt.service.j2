@@ -1,0 +1,12 @@
+[Unit]
+Description=dnsmasq DHCP for OVE mgmt network
+After=openvswitch.service
+Requires=openvswitch.service
+
+[Service]
+Type=forking
+ExecStart=/usr/sbin/dnsmasq --conf-file=/etc/dnsmasq-ove-mgmt.conf --pid-file=/run/dnsmasq-ove-mgmt.pid
+PIDFile=/run/dnsmasq-ove-mgmt.pid
+
+[Install]
+WantedBy=multi-user.target

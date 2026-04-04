@@ -19,4 +19,5 @@
 
 - name: Configure sushy-emulator
   ansible.builtin.include_tasks: sushy.yml
+  when: infra_backend | default('openstack') == 'openstack'
 

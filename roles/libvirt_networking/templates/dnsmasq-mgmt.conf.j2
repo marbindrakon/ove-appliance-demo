@@ -1,0 +1,19 @@
+# dnsmasq config for OVE mgmt network DHCP on br-ove
+interface=mgmt-host
+bind-interfaces
+no-resolv
+no-hosts
+
+# DHCP range on mgmt network — only static assignments used
+dhcp-range=10.10.0.10,10.10.0.200,255.255.255.0,infinite
+
+# Bastion static assignment
+dhcp-host={{ bastion_mgmt_mac }},{{ bastion_mgmt_ip }},infinite
+
+# OVE node static assignments (trunk0 parent port)
+{% for node in _mgmt_dhcp_hosts %}
+dhcp-host={{ node.mac }},{{ node.ip }},infinite
+{% endfor %}
+
+# DNS server option — point to bastion
+dhcp-option=option:dns-server,{{ bastion_mgmt_ip }}

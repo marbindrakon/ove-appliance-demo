@@ -1,0 +1,143 @@
+---
+# --- OVS bridge for all OVE demo traffic ---
+
+- name: Create OVS bridge
+  openvswitch.openvswitch.openvswitch_bridge:
+    bridge: "{{ ovs_bridge_name }}"
+    state: present
+
+- name: Create OVS internal port for KVM host mgmt access
+  openvswitch.openvswitch.openvswitch_port:
+    bridge: "{{ ovs_bridge_name }}"
+    port: mgmt-host
+    state: present
+    set: "Interface mgmt-host type=internal"
+
+- name: Set mgmt-host port as access port on mgmt VLAN
+  ansible.builtin.command:
+    cmd: ovs-vsctl set port mgmt-host tag={{ mgmt_vlan_id }}
+  changed_when: true
+
+- name: Assign IP to mgmt-host interface
+  ansible.builtin.command:
+    cmd: ip addr replace {{ kvm_host_mgmt_ip }}/24 dev mgmt-host
+  changed_when: true
+
+- name: Bring up mgmt-host interface
+  ansible.builtin.command:
+    cmd: ip link set mgmt-host up
+  changed_when: true
+
+- name: Make mgmt-host IP persistent via nmcli
+  community.general.nmcli:
+    conn_name: mgmt-host
+    ifname: mgmt-host
+    type: ovs-interface
+    ip4: "{{ kvm_host_mgmt_ip }}/24"
+    state: present
+  failed_when: false
+
+# --- libvirt NAT network for bastion external access ---
+
+- name: Check if NAT network exists
+  community.libvirt.virt_net:
+    name: "{{ libvirt_nat_network_name }}"
+    command: info
+  register: nat_net_info
+  failed_when: false
+
+- name: Define NAT network
+  community.libvirt.virt_net:
+    command: define
+    name: "{{ libvirt_nat_network_name }}"
+    xml: "{{ lookup('template', 'bastion-nat-network.xml.j2') }}"
+  when: nat_net_info is failed or libvirt_nat_network_name not in (nat_net_info.networks | default({}))
+
+- name: Start NAT network
+  community.libvirt.virt_net:
+    name: "{{ libvirt_nat_network_name }}"
+    state: active
+
+- name: Autostart NAT network
+  community.libvirt.virt_net:
+    name: "{{ libvirt_nat_network_name }}"
+    autostart: true
+
+# --- Port forwarding: KVM host -> bastion SSH ---
+
+- name: Enable IP forwarding for NAT
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_set: true
+    reload: true
+    state: present
+
+- name: Add iptables DNAT rule for bastion SSH
+  ansible.builtin.iptables:
+    table: nat
+    chain: PREROUTING
+    protocol: tcp
+    destination_port: "{{ bastion_ssh_forward_port }}"
+    jump: DNAT
+    to_destination: "{{ libvirt_nat_bastion_ip }}:22"
+    comment: "OVE demo bastion SSH forward"
+    state: present
+
+- name: Add iptables FORWARD rule for bastion SSH
+  ansible.builtin.iptables:
+    chain: FORWARD
+    protocol: tcp
+    destination: "{{ libvirt_nat_bastion_ip }}"
+    destination_port: "22"
+    jump: ACCEPT
+    comment: "OVE demo bastion SSH forward"
+    state: present
+
+# --- dnsmasq for mgmt network DHCP ---
+
+- name: Build mgmt DHCP host list from node IPs
+  ansible.builtin.set_fact:
+    _mgmt_dhcp_hosts: >-
+      [{% for idx in range(0, ove_node_count | int) %}
+      {"mac": "{{ mac_prefix }}:01:{{ '%02x' | format(idx + 11) }}", "ip": "{{ ove_node_mgmt_ips[idx] }}"}{{ "," if not loop.last }}
+      {% endfor %}]
+    bastion_mgmt_mac: "{{ mac_prefix }}:00:01"
+
+- name: Install dnsmasq
+  ansible.builtin.dnf:
+    name: dnsmasq
+    state: present
+
+- name: Template dnsmasq config for mgmt network
+  ansible.builtin.template:
+    src: dnsmasq-mgmt.conf.j2
+    dest: /etc/dnsmasq-ove-mgmt.conf
+    mode: "0644"
+  notify: restart dnsmasq-ove-mgmt
+
+- name: Template dnsmasq systemd unit
+  ansible.builtin.template:
+    src: dnsmasq-mgmt.service.j2
+    dest: /etc/systemd/system/dnsmasq-ove-mgmt.service
+    mode: "0644"
+  notify: restart dnsmasq-ove-mgmt
+
+- name: Enable and start dnsmasq for mgmt network
+  ansible.builtin.systemd:
+    name: dnsmasq-ove-mgmt
+    state: started
+    enabled: true
+    daemon_reload: true
+
+# --- Firewall: allow sushy port on mgmt-host ---
+
+- name: Allow sushy-emulator port on mgmt-host
+  ansible.builtin.iptables:
+    chain: INPUT
+    in_interface: mgmt-host
+    protocol: tcp
+    destination_port: "{{ sushy_port }}"
+    jump: ACCEPT
+    comment: "OVE demo sushy-emulator"
+    state: present

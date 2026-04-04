@@ -1,0 +1,48 @@
+---
+- name: Install sushy-tools prerequisites
+  ansible.builtin.dnf:
+    name:
+      - python3-pip
+      - python3-libvirt
+      - httpd-tools
+    state: present
+
+- name: Install sushy-tools and dependencies
+  ansible.builtin.pip:
+    name:
+      - sushy-tools
+      - gunicorn
+      - libvirt-python
+    executable: pip3
+
+- name: Generate htpasswd file
+  ansible.builtin.command:
+    cmd: "htpasswd -cbB /root/sushy-emulators.htpasswd {{ sushy_username }} {{ sushy_password }}"
+  changed_when: true
+  no_log: "{{ not debug_mode | default(false) | bool }}"
+
+- name: Set htpasswd file permissions
+  ansible.builtin.file:
+    path: /root/sushy-emulators.htpasswd
+    mode: "0600"
+
+- name: Deploy sushy-emulators config
+  ansible.builtin.template:
+    src: sushy-emulators.conf.j2
+    dest: /root/sushy-emulators.conf
+    mode: "0644"
+  notify: restart sushy-emulators
+
+- name: Deploy sushy-emulators systemd unit
+  ansible.builtin.template:
+    src: sushy-emulators.service.j2
+    dest: /etc/systemd/system/sushy-emulators.service
+    mode: "0644"
+  notify: restart sushy-emulators
+
+- name: Reload systemd and enable sushy-emulators
+  ansible.builtin.systemd:
+    name: sushy-emulators
+    daemon_reload: true
+    enabled: true
+    state: started

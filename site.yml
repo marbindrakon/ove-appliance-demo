@@ -1,7 +1,7 @@
 # site.yml — OVE Appliance Demo Environment Orchestrator
 ---
-# Play 1: Create OpenStack infrastructure (project, networks, VMs)
-- name: Create OVE demo infrastructure
+# Play 1: Create OpenStack infrastructure (project, networks, bastion VM)
+- name: Create OVE demo infrastructure (OpenStack)
   hosts: localhost
   connection: local
   gather_facts: false
@@ -12,9 +12,31 @@
         state: directory
         mode: '0700'
   roles:
-    - openstack_project
-    - openstack_networking
-    - bastion_vm
+    - role: openstack_project
+      when: infra_backend | default('openstack') == 'openstack'
+    - role: openstack_networking
+      when: infra_backend | default('openstack') == 'openstack'
+    - role: bastion_vm
+      when: infra_backend | default('openstack') == 'openstack'
+  tasks:
+    - name: Add KVM host to inventory
+      ansible.builtin.add_host:
+        name: kvm-host
+        groups: kvm_hosts
+        ansible_host: "{{ kvm_host }}"
+        ansible_user: "{{ kvm_host_user }}"
+        ansible_ssh_private_key_file: "{{ kvm_host_ssh_key | default(omit) }}"
+      when: infra_backend | default('openstack') == 'libvirt'
+
+# Play 1b: Prepare KVM host and create bastion VM (libvirt only)
+- name: Prepare KVM host and create bastion VM (libvirt)
+  hosts: kvm-host
+  gather_facts: true
+  become: true
+  roles:
+    - kvm_host_prepare
+    - libvirt_networking
+    - libvirt_bastion
 
 # Play 2: Configure bastion host services (generates SSH key for cloud-user)
 - name: Configure bastion host
@@ -22,10 +44,10 @@
   gather_facts: true
   become: true
   vars:
-    os_auth_url: "{{ lookup('env', 'OS_AUTH_URL') | default(hostvars['localhost']['os_auth_url'], true) }}"
+    os_auth_url: "{{ lookup('env', 'OS_AUTH_URL') | default(hostvars['localhost']['os_auth_url'] | default(''), true) }}"
     os_region: "{{ lookup('env', 'OS_REGION_NAME') | default(hostvars['localhost']['os_region'] | default('RegionOne'), true) }}"
-    sushy_app_credential_id: "{{ hostvars['localhost']['sushy_app_credential_id'] }}"
-    sushy_app_credential_secret: "{{ hostvars['localhost']['sushy_app_credential_secret'] }}"
+    sushy_app_credential_id: "{{ hostvars['localhost']['sushy_app_credential_id'] | default('') }}"
+    sushy_app_credential_secret: "{{ hostvars['localhost']['sushy_app_credential_secret'] | default('') }}"
   roles:
     - bastion_configure
 
@@ -41,8 +63,8 @@
         - appliance_image_path | default('') | length == 0
         - appliance_glance_image | default('') | length == 0
 
-# Play 4: Create OVE node trunks and VMs
-- name: Create OVE nodes
+# Play 4a: Create OVE node trunks and VMs (OpenStack)
+- name: Create OVE nodes (OpenStack)
   hosts: localhost
   connection: local
   gather_facts: false
@@ -57,6 +79,7 @@
         container_format: bare
         state: present
       when:
+        - infra_backend | default('openstack') == 'openstack'
         - install_method | default('ove') == 'appliance'
         - appliance_image_path | default('') | length > 0
         - appliance_glance_image | default('') | length == 0
@@ -71,7 +94,55 @@
         container_format: bare
         state: present
       when:
+        - infra_backend | default('openstack') == 'openstack'
         - install_method | default('ove') == 'ove'
         - ove_agent_glance_image | default('') | length == 0
   roles:
-    - ove_nodes
+    - role: ove_nodes
+      when: infra_backend | default('openstack') == 'openstack'
+
+# Play 4b: Create OVE node VMs (libvirt)
+- name: Create OVE nodes (libvirt)
+  hosts: kvm-host
+  gather_facts: false
+  become: true
+  pre_tasks:
+    # Transfer appliance image from bastion to KVM host if built on bastion
+    - name: Check if appliance image exists on KVM host
+      ansible.builtin.stat:
+        path: "{{ libvirt_pool_path }}/appliance-base.raw"
+      register: appliance_on_kvm
+      when:
+        - install_method | default('ove') == 'appliance'
+        - appliance_image_path | default('') | length == 0
+
+    - name: Fetch appliance image from bastion to KVM host
+      ansible.builtin.command:
+        cmd: >
+          scp -o StrictHostKeyChecking=no
+          cloud-user@{{ bastion_mgmt_ip }}:/root/appliance-assets/appliance.raw
+          {{ libvirt_pool_path }}/appliance-base.raw
+      when:
+        - install_method | default('ove') == 'appliance'
+        - appliance_image_path | default('') | length == 0
+        - not (appliance_on_kvm.stat.exists | default(false))
+      changed_when: true
+
+    - name: Copy pre-built appliance image from controller to KVM host
+      ansible.builtin.copy:
+        src: "{{ appliance_image_path }}"
+        dest: "{{ libvirt_pool_path }}/appliance-base.raw"
+        mode: "0644"
+      when:
+        - install_method | default('ove') == 'appliance'
+        - appliance_image_path | default('') | length > 0
+  roles:
+    - libvirt_ove_nodes
+
+# Play 5: Deploy sushy-emulator on KVM host (libvirt only)
+- name: Deploy sushy-emulator on KVM host (libvirt)
+  hosts: kvm-host
+  gather_facts: false
+  become: true
+  roles:
+    - kvm_sushy

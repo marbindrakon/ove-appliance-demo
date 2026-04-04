@@ -1,0 +1,15 @@
+---
+ovs_bridge_name: "br-ove"
+kvm_host_mgmt_ip: "10.10.0.254"
+mgmt_vlan_id: 10
+
+libvirt_nat_network_name: "ove-bastion-nat"
+libvirt_nat_network_cidr: "192.168.122.0/24"
+libvirt_nat_gateway_ip: "192.168.122.1"
+libvirt_nat_bastion_ip: "192.168.122.10"
+bastion_nat_mac: "52:54:00:00:00:10"
+
+bastion_ssh_forward_port: 2222
+
+# MAC-to-IP mappings for mgmt DHCP (generated from ove_node_mgmt_ips)
+# Format: list of {mac, ip} dicts — populated by tasks

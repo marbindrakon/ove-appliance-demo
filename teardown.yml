@@ -1,6 +1,7 @@
 # teardown.yml — Destroy all OVE demo resources
 ---
-- name: Tear down OVE demo environment
+# --- OpenStack teardown ---
+- name: Tear down OVE demo environment (OpenStack)
   hosts: localhost
   connection: local
   gather_facts: false
@@ -11,6 +12,10 @@
         state: directory
         mode: '0700'
   tasks:
+    - name: Skip OpenStack teardown for libvirt backend
+      ansible.builtin.meta: end_play
+      when: infra_backend | default('openstack') == 'libvirt'
+
     # --- Find clouds.yaml early (needed for cleanup at end) ---
     - name: Find clouds.yaml path
       ansible.builtin.stat:
@@ -225,4 +230,168 @@
     - name: Remove local credential cache
       ansible.builtin.file:
         path: ".ove-demo-cache"
+        state: absent
+
+# --- libvirt teardown ---
+- name: Add KVM host to inventory (libvirt teardown)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Skip for OpenStack backend
+      ansible.builtin.meta: end_play
+      when: infra_backend | default('openstack') == 'openstack'
+
+    - name: Add KVM host to inventory
+      ansible.builtin.add_host:
+        name: kvm-host
+        groups: kvm_hosts
+        ansible_host: "{{ kvm_host }}"
+        ansible_user: "{{ kvm_host_user }}"
+        ansible_ssh_private_key_file: "{{ kvm_host_ssh_key | default(omit) }}"
+
+- name: Tear down OVE demo environment (libvirt)
+  hosts: kvm-host
+  gather_facts: false
+  become: true
+  tasks:
+    # --- Stop and undefine OVE node VMs ---
+    - name: Destroy OVE node VMs
+      community.libvirt.virt:
+        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
+        state: destroyed
+      loop: "{{ range(0, ove_node_count | int) | list }}"
+      failed_when: false
+
+    - name: Undefine OVE node VMs
+      ansible.builtin.command:
+        cmd: virsh undefine --nvram {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
+      loop: "{{ range(0, ove_node_count | int) | list }}"
+      failed_when: false
+      changed_when: true
+
+    # --- Stop and undefine bastion VM ---
+    - name: Destroy bastion VM
+      community.libvirt.virt:
+        name: "{{ project_name }}-bastion"
+        state: destroyed
+      failed_when: false
+
+    - name: Undefine bastion VM
+      ansible.builtin.command:
+        cmd: virsh undefine --nvram {{ project_name }}-bastion
+      failed_when: false
+      changed_when: true
+
+    # --- Delete disk images ---
+    - name: Find all demo disk images in storage pool
+      ansible.builtin.find:
+        paths: "{{ libvirt_pool_path }}"
+        patterns: "{{ project_name }}-*"
+      register: demo_disk_files
+
+    - name: Delete demo disk images
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ demo_disk_files.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+    - name: Delete appliance base image
+      ansible.builtin.file:
+        path: "{{ libvirt_pool_path }}/appliance-base.raw"
+        state: absent
+
+    # --- Stop sushy-emulator ---
+    - name: Stop and disable sushy-emulator
+      ansible.builtin.systemd:
+        name: sushy-emulators
+        state: stopped
+        enabled: false
+      failed_when: false
+
+    - name: Remove sushy-emulator files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/sushy-emulators.service
+        - /root/sushy-emulators.conf
+        - /root/sushy-emulators.htpasswd
+
+    # --- Stop dnsmasq for mgmt network ---
+    - name: Stop and disable dnsmasq-ove-mgmt
+      ansible.builtin.systemd:
+        name: dnsmasq-ove-mgmt
+        state: stopped
+        enabled: false
+      failed_when: false
+
+    - name: Remove dnsmasq config and service
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/dnsmasq-ove-mgmt.conf
+        - /etc/systemd/system/dnsmasq-ove-mgmt.service
+
+    # --- Remove OVS bridge ---
+    - name: Delete OVS bridge
+      openvswitch.openvswitch.openvswitch_bridge:
+        bridge: "{{ ovs_bridge_name }}"
+        state: absent
+      failed_when: false
+
+    # --- Remove NAT network ---
+    - name: Destroy NAT network
+      community.libvirt.virt_net:
+        name: "{{ libvirt_nat_network_name }}"
+        state: inactive
+      failed_when: false
+
+    - name: Undefine NAT network
+      community.libvirt.virt_net:
+        name: "{{ libvirt_nat_network_name }}"
+        state: absent
+      failed_when: false
+
+    # --- Remove iptables rules ---
+    - name: Remove iptables DNAT rule for bastion SSH
+      ansible.builtin.iptables:
+        table: nat
+        chain: PREROUTING
+        protocol: tcp
+        destination_port: "{{ bastion_ssh_forward_port }}"
+        jump: DNAT
+        to_destination: "{{ libvirt_nat_bastion_ip }}:22"
+        state: absent
+      failed_when: false
+
+    - name: Remove iptables FORWARD rule for bastion SSH
+      ansible.builtin.iptables:
+        chain: FORWARD
+        protocol: tcp
+        destination: "{{ libvirt_nat_bastion_ip }}"
+        destination_port: "22"
+        jump: ACCEPT
+        state: absent
+      failed_when: false
+
+    # --- Remove storage pool ---
+    - name: Destroy storage pool
+      ansible.builtin.command:
+        cmd: virsh pool-destroy {{ libvirt_pool_name }}
+      failed_when: false
+      changed_when: true
+
+    - name: Undefine storage pool
+      ansible.builtin.command:
+        cmd: virsh pool-undefine {{ libvirt_pool_name }}
+      failed_when: false
+      changed_when: true
+
+    - name: Remove storage pool directory
+      ansible.builtin.file:
+        path: "{{ libvirt_pool_path }}"
         state: absent

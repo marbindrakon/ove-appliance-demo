@@ -1,0 +1,14 @@
+#cloud-config
+hostname: bastion
+fqdn: bastion.{{ base_domain }}
+manage_etc_hosts: true
+
+users:
+  - name: cloud-user
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - {{ ssh_public_key }}
+
+ssh_pwauth: false

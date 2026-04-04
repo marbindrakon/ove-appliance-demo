@@ -1,6 +1,11 @@
 # OVE Appliance Demo
 
-Ansible automation to provision an OpenStack-hosted OVE (OpenShift Virtualization Engine) demo environment: project, networking, bastion VM, and bare-metal-emulated OVE nodes. Supports two install methods controlled by `install_method` in inventory:
+Ansible automation to provision an OVE (OpenShift Virtualization Engine) demo environment: networking, bastion VM, and bare-metal-emulated OVE nodes. Supports two infrastructure backends controlled by `infra_backend` in inventory:
+
+- **`openstack`** (default) — Provisions on OpenStack (Neutron networking, Nova VMs, Cinder volumes)
+- **`libvirt`** — Provisions on a single RHEL KVM host using libvirt and Open vSwitch for VLAN trunking
+
+Supports two install methods controlled by `install_method` in inventory:
 
 - **`ove`** (default) — Agent ISO boot: blank root volume + USB volume from agent ISO, UEFI intervention required
 - **`appliance`** — Factory disk image: pre-built appliance.raw from `openshift-appliance` container, direct boot, blank CD-ROM volume for sushy virtual media config delivery
@@ -26,6 +31,7 @@ For appliance mode, set `install_method: "appliance"` and provide `pull_secret` 
 
 ## Architecture
 
+### OpenStack backend
 ```
 site.yml
  Play 1 (localhost):
@@ -40,6 +46,25 @@ site.yml
  └── ove_nodes            — trunks, volumes, VMs (branches on install_method)
 ```
 
+### libvirt backend
+```
+site.yml
+ Play 1 (localhost):
+ └── add KVM host to inventory
+ Play 1b (kvm-host):
+ ├── kvm_host_prepare     — packages, libvirtd, OVS, storage pool
+ ├── libvirt_networking   — OVS bridge br-ove, NAT network, port forwarding, dnsmasq
+ └── libvirt_bastion      — qcow2 copy, cloud-init ISO, domain XML, OVS port config
+ Play 2 (bastion SSH via port forward):
+ └── bastion_configure    — SSH key, RHSM, desktop/podman, firewall, BIND, NTP (no sushy)
+ Play 3 (bastion SSH, appliance mode only):
+ └── appliance_image      — build appliance.raw on bastion (no Glance upload)
+ Play 4b (kvm-host):
+ └── libvirt_ove_nodes    — disk images, domain XML, OVS trunk ports
+ Play 5 (kvm-host):
+ └── kvm_sushy            — sushy-emulator with libvirt driver on KVM host
+```
+
 ## Key Design Points
 
 **Boot flow (OVE mode)**: Each OVE node has two volumes. `boot_index=0` is a blank root volume (no bootloader); `boot_index=1` is a virtio USB volume pre-provisioned from the agent ISO. On first boot the VM lands in the UEFI shell (unintended but retained — it gives the operator a chance to intervene). The operator must enter UEFI config and select the USB device to launch the agent installer. The installer writes OCP to the root volume; subsequent reboots come up from root. No `nova rebuild` required.
@@ -48,8 +73,12 @@ site.yml
 
 **Bastion SSH key**: The `bastion_configure` role generates an ed25519 SSH key pair for `cloud-user`. In appliance mode, the public key is read by the `appliance_image` role and embedded in the appliance config so the bastion can SSH to installed nodes.
 
-**Trunks**: Each node has two OpenStack trunks (trunk0/trunk1). The mgmt network (10.10.0.0/24) is the native/untagged VLAN on the parent port. Storage and workload VLANs are sub-ports. `trunk0` parent ports have fixed IPs (`ove_node_mgmt_ips`) and infinite DHCP lease time so coreos-install writes a static address. `trunk1` parent ports use `fixed_ips: []` to prevent any IP allocation.
+**Trunks (OpenStack)**: Each node has two OpenStack trunks (trunk0/trunk1). The mgmt network (10.10.0.0/24) is the native/untagged VLAN on the parent port. Storage and workload VLANs are sub-ports. `trunk0` parent ports have fixed IPs (`ove_node_mgmt_ips`) and infinite DHCP lease time so coreos-install writes a static address. `trunk1` parent ports use `fixed_ips: []` to prevent any IP allocation.
+
+**Trunks (libvirt)**: OVS trunk ports use `vlan_mode=native-untagged` with mgmt VLAN as PVID and storage/workload VLANs trunked. Port names are predictable (`ovenode{N}-t{0,1}`) via `<target dev>` in domain XML. OVS settings are lost on VM restart; `configure_ovs_trunks.yml` re-applies after start.
 
 **`openstack.cloud.trunk` bug**: The module silently ignores `sub_ports` on creation. `create_trunk.yml` calls it twice (create then update) and uses port *names* not IDs — the update path matches by `sp['name'] == k['port']`.
 
 **DNS**: Bastion subnet and bastion-mgmt-port `extra_dhcp_opts` both advertise `dns_forwarders` (not the bastion itself) so BIND isn't needed before subscription. Mgmt subnet advertises `bastion_mgmt_ip` as nameserver for OVE nodes. BIND on the bastion is authoritative for `base_domain` and forwards everything else.
+
+**Sushy-emulator placement**: In OpenStack mode, sushy runs on the bastion with the OpenStack driver. In libvirt mode, sushy runs on the KVM host with the libvirt driver (`qemu:///system`), reachable at `10.10.0.254:8000` via the OVS `mgmt-host` internal port. The `bastion_configure` role conditionally skips sushy setup when `infra_backend == 'libvirt'`.

@@ -2,10 +2,13 @@
 # Debug — set to true to disable no_log (e.g., ansible-playbook site.yml -e debug_mode=true)
 debug_mode: false
 
+# Infrastructure backend — "openstack" or "libvirt"
+infra_backend: "openstack"
+
 # Install method — "ove" for agent ISO boot, "appliance" for factory disk image
 install_method: "ove"
 
-# OpenStack connection
+# OpenStack connection (only used when infra_backend == "openstack")
 cloud_name: "lab-infra"  # Must be set by operator — matches a cloud in clouds.yaml
 demo_cloud_name: "{{ project_name }}"  # Auto-created cloud entry scoped to demo project
 
@@ -137,3 +140,44 @@ demo_networks:
     cidr: "{{ workload3_network_cidr }}"
     enable_dhcp: false
     port_security_enabled: false
+
+# --- libvirt backend settings (only used when infra_backend == "libvirt") ---
+
+# KVM host connection
+kvm_host: ""              # Must be set by operator — IP or hostname of the KVM host
+kvm_host_user: "root"     # SSH user on KVM host
+kvm_host_ssh_key: ""      # Path to SSH private key for KVM host (optional, uses ssh-agent if empty)
+
+# libvirt storage
+libvirt_pool_name: "ove-demo"
+libvirt_pool_path: "/var/lib/libvirt/images/ove-demo"
+
+# Bastion RHEL qcow2 image (path on KVM host)
+bastion_qcow2_image: ""   # Must be set by operator — e.g., /var/lib/libvirt/images/rhel-9.5.qcow2
+
+# Bastion NAT network (for external access via port forwarding)
+libvirt_nat_network_name: "ove-bastion-nat"
+libvirt_nat_network_cidr: "192.168.122.0/24"
+libvirt_nat_bastion_ip: "192.168.122.10"
+libvirt_nat_gateway_ip: "192.168.122.1"
+
+# OVS bridge
+ovs_bridge_name: "br-ove"
+kvm_host_mgmt_ip: "10.10.0.254"
+
+# SSH port forward from KVM host to bastion
+bastion_ssh_forward_port: 2222
+
+# Bastion VM sizing (replaces bastion_flavor for libvirt)
+bastion_vcpus: 4
+bastion_ram_mb: 8192
+
+# OVE node VM sizing (replaces ove_node_flavor for libvirt)
+ove_node_vcpus: 16
+ove_node_ram_mb: 65536
+
+# SSH public key content for cloud-init injection (libvirt mode)
+ssh_public_key: ""  # Must be set by operator — e.g., contents of ~/.ssh/id_ed25519.pub
+
+# MAC address prefix for deterministic assignment (last two octets are generated)
+mac_prefix: "52:54:00:10"

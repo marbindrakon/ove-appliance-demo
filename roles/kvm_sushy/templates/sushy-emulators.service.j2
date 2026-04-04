@@ -1,0 +1,14 @@
+[Unit]
+Description=Sushy BMC Emulator (libvirt)
+After=syslog.target libvirtd.service
+
+[Service]
+Type=simple
+Environment="SUSHY_EMULATOR_CONFIG=/root/sushy-emulators.conf"
+ExecStart=/usr/local/bin/gunicorn -b 0.0.0.0:{{ sushy_port }} -w 8 --max-requests 100 --log-level debug sushy_tools.emulator.main:app
+LimitNOFILE=65536
+StandardOutput=syslog
+StandardError=syslog
+
+[Install]
+WantedBy=multi-user.target

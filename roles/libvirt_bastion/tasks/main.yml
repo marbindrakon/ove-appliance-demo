@@ -1,0 +1,92 @@
+---
+- name: Check if bastion domain already exists
+  community.libvirt.virt:
+    name: "{{ project_name }}-bastion"
+    command: info
+  register: bastion_domain_info
+  failed_when: false
+
+- name: Create bastion VM
+  when: "project_name ~ '-bastion' not in (bastion_domain_info | default({}))"
+  block:
+    - name: Copy bastion RHEL qcow2 image to storage pool
+      ansible.builtin.copy:
+        src: "{{ bastion_qcow2_image }}"
+        dest: "{{ libvirt_pool_path }}/{{ project_name }}-bastion-boot.qcow2"
+        remote_src: true
+        force: false
+        mode: "0644"
+
+    - name: Resize bastion boot disk
+      ansible.builtin.command:
+        cmd: qemu-img resize {{ libvirt_pool_path }}/{{ project_name }}-bastion-boot.qcow2 {{ bastion_disk_gb }}G
+      changed_when: true
+
+    - name: Create cloud-init meta-data
+      ansible.builtin.template:
+        src: bastion-meta-data.j2
+        dest: "{{ libvirt_pool_path }}/{{ project_name }}-bastion-meta-data"
+        mode: "0644"
+
+    - name: Create cloud-init user-data
+      ansible.builtin.template:
+        src: bastion-user-data.j2
+        dest: "{{ libvirt_pool_path }}/{{ project_name }}-bastion-user-data"
+        mode: "0644"
+
+    - name: Create cloud-init network-config
+      ansible.builtin.template:
+        src: bastion-network-config.j2
+        dest: "{{ libvirt_pool_path }}/{{ project_name }}-bastion-network-config"
+        mode: "0644"
+
+    - name: Generate cloud-init ISO
+      ansible.builtin.command:
+        cmd: >
+          genisoimage -output {{ libvirt_pool_path }}/{{ project_name }}-bastion-cidata.iso
+          -volid cidata -joliet -rock
+          {{ libvirt_pool_path }}/{{ project_name }}-bastion-meta-data
+          {{ libvirt_pool_path }}/{{ project_name }}-bastion-user-data
+          {{ libvirt_pool_path }}/{{ project_name }}-bastion-network-config
+      changed_when: true
+
+    - name: Clean up cloud-init source files
+      ansible.builtin.file:
+        path: "{{ libvirt_pool_path }}/{{ project_name }}-bastion-{{ item }}"
+        state: absent
+      loop:
+        - meta-data
+        - user-data
+        - network-config
+
+    - name: Define bastion domain
+      community.libvirt.virt:
+        command: define
+        xml: "{{ lookup('template', 'bastion-domain.xml.j2') }}"
+
+- name: Start bastion VM
+  community.libvirt.virt:
+    name: "{{ project_name }}-bastion"
+    state: running
+
+- name: Set bastion mgmt OVS port as access port on mgmt VLAN
+  ansible.builtin.command:
+    cmd: ovs-vsctl set port bastion-mgmt tag={{ mgmt_vlan_id }}
+  changed_when: true
+
+- name: Add bastion to in-memory inventory
+  ansible.builtin.add_host:
+    name: "{{ project_name }}-bastion"
+    groups: ove_demo_bastion
+    ansible_host: "{{ kvm_host }}"
+    ansible_port: "{{ bastion_ssh_forward_port }}"
+    ansible_user: cloud-user
+  delegate_to: localhost
+
+- name: Wait for bastion SSH to become available
+  ansible.builtin.wait_for:
+    host: "{{ kvm_host }}"
+    port: "{{ bastion_ssh_forward_port }}"
+    delay: 15
+    timeout: 300
+  delegate_to: localhost
