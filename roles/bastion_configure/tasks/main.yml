@@ -1,4 +1,7 @@
 ---
+- name: Generate SSH key for cloud-user
+  ansible.builtin.include_tasks: ssh_key.yml
+
 - name: Register with RHSM
   ansible.builtin.include_tasks: subscription.yml
 

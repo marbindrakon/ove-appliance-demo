@@ -63,6 +63,15 @@
         name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-usb"
         state: absent
       loop: "{{ range(0, ove_node_count | int) | list }}"
+      when: install_method | default('ove') == 'ove'
+
+    - name: Delete appliance node CD-ROM volumes
+      openstack.cloud.volume:
+        cloud: "{{ demo_cloud_name }}"
+        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-cdrom"
+        state: absent
+      loop: "{{ range(0, ove_node_count | int) | list }}"
+      when: install_method | default('ove') == 'appliance'
 
     - name: Delete OVE agent ISO Glance image
       openstack.cloud.image:
@@ -70,6 +79,15 @@
         name: "{{ ove_agent_iso_path | basename }}"
         state: absent
       failed_when: false
+      when: install_method | default('ove') == 'ove'
+
+    - name: Delete appliance Glance image
+      openstack.cloud.image:
+        cloud: "{{ demo_cloud_name }}"
+        name: "{{ appliance_image_name | default('openshift-appliance') }}"
+        state: absent
+      failed_when: false
+      when: install_method | default('ove') == 'appliance'
 
     # --- Delete OVE node trunk ports ---
     - name: Delete OVE node trunks

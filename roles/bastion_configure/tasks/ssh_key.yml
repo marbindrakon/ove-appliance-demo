@@ -1,0 +1,7 @@
+---
+- name: Generate SSH key pair for cloud-user
+  ansible.builtin.user:
+    name: cloud-user
+    generate_ssh_key: true
+    ssh_key_type: ed25519
+    ssh_key_comment: "cloud-user@{{ inventory_hostname }}"

@@ -1,15 +1,17 @@
 ---
-- name: Install GNOME desktop environment
+- name: Install GNOME desktop environment and podman
   ansible.builtin.dnf:
-    name: "@workstation"
+    name:
+      - "@workstation"
+      - podman
     state: present
-
-- name: Set default target to graphical
-  ansible.builtin.systemd:
-    name: graphical.target
-    enabled: true
 
 - name: Set graphical as default systemd target
   ansible.builtin.command:
     cmd: systemctl set-default graphical.target
   changed_when: true
+
+- name: Start graphical target
+  ansible.builtin.systemd:
+    name: graphical.target
+    state: started

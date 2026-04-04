@@ -2,6 +2,9 @@
 # Debug — set to true to disable no_log (e.g., ansible-playbook site.yml -e debug_mode=true)
 debug_mode: false
 
+# Install method — "ove" for agent ISO boot, "appliance" for factory disk image
+install_method: "ove"
+
 # OpenStack connection
 cloud_name: "lab-infra"  # Must be set by operator — matches a cloud in clouds.yaml
 demo_cloud_name: "{{ project_name }}"  # Auto-created cloud entry scoped to demo project
@@ -66,8 +69,20 @@ dns_forwarders:
 sushy_blank_image: "sushy-tools-blank-image"
 sushy_port: 8000
 
-# OVE agent ISO path on the Ansible controller (copied to bastion during site.yml)
+# OVE agent ISO path on the Ansible controller (only used when install_method == "ove")
 ove_agent_iso_path: "{{ playbook_dir }}/agent-ove.x86_64.iso"
+
+# Appliance mode settings (only used when install_method == "appliance")
+appliance_ocp_version: "4.20"
+appliance_ocp_channel: "stable"
+appliance_cpu_arch: "x86_64"
+appliance_disk_size_gb: 250
+appliance_image_name: "openshift-appliance"
+appliance_cdrom_volume_gb: 1
+appliance_container_image: "quay.io/redhat-user-workloads/crt-nshift-appliance-tenant/appliance/appliance@sha256:bcdf91c38a030f1ad5c9448d2953192f9e08035b736b5a5c3b94414fad4105a5"
+pull_secret: ''  # Must be set by operator — obtain from console.redhat.com
+# SSH key for the appliance image is auto-generated on the bastion (cloud-user)
+# and read directly by the appliance_image role during the build
 
 # Networks
 bastion_network_cidr: "10.0.0.0/24"

@@ -1,0 +1,20 @@
+apiVersion: v1beta1
+kind: ApplianceConfig
+ocpRelease:
+  version: "{{ appliance_ocp_version }}"
+  channel: "{{ appliance_ocp_channel }}"
+  cpuArchitecture: "{{ appliance_cpu_arch }}"
+diskSizeGB: {{ appliance_disk_size_gb }}
+pullSecret: {{ pull_secret | to_json }}
+{% if bastion_ssh_public_key | default('') %}
+sshKey: "{{ bastion_ssh_public_key }}"
+{% endif %}
+{% if appliance_enable_interactive_flow | default(false) | bool %}
+enableInteractiveFlow: true
+{% endif %}
+{% if appliance_fips | default(false) | bool %}
+enableFips: true
+{% endif %}
+createPinnedImageSets: false
+{{ {'operators': appliance_operators} | to_nice_yaml(indent=2) -}}
+{{ {'additionalImages': appliance_additional_images} | to_nice_yaml(indent=2) -}}

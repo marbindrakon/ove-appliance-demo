@@ -15,9 +15,8 @@
     - openstack_project
     - openstack_networking
     - bastion_vm
-    - ove_nodes
 
-# Play 2: Configure bastion host services
+# Play 2: Configure bastion host services (generates SSH key for cloud-user)
 - name: Configure bastion host
   hosts: ove_demo_bastion
   gather_facts: true
@@ -29,3 +28,20 @@
     sushy_app_credential_secret: "{{ hostvars['localhost']['sushy_app_credential_secret'] }}"
   roles:
     - bastion_configure
+
+# Play 3: Build appliance image on bastion (appliance mode only)
+- name: Build appliance image on bastion
+  hosts: ove_demo_bastion
+  gather_facts: false
+  become: true
+  roles:
+    - role: appliance_image
+      when: install_method | default('ove') == 'appliance'
+
+# Play 4: Create OVE node trunks and VMs
+- name: Create OVE nodes
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - ove_nodes

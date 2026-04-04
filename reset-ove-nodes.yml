@@ -1,39 +1,41 @@
 ---
 # reset-ove-nodes.yml — Reset OVE nodes for a fresh OCP installation
 #
-# Rebuilds each OVE node's root volume (boot_index=0) back to the blank sushy
-# image, clearing any previous OCP installation. The USB volume (boot_index=1)
-# is left untouched; it still carries the agent ISO from site.yml. On next
-# boot each node falls through to the USB and performs a clean installation.
+# OVE mode:    Rebuilds root volumes back to blank sushy image. USB volume is
+#              untouched. On next boot each node falls through to the USB and
+#              performs a clean installation.
+# Appliance mode: Rebuilds boot volumes with the appliance image, returning
+#              nodes to factory state ready for a new configuration ISO.
 #
 # The bastion and all networking are left untouched.
 #
 # Run from the Ansible controller:
 #   ansible-playbook reset-ove-nodes.yml -i inventory/
 #
-# After this playbook completes the nodes are ACTIVE and booting from the agent
-# ISO on the USB volume. The installer will wait for human input before
-# proceeding.
-#
 # Prerequisites:
 #   - OVE nodes must exist (site.yml completed)
-#   - sushy_blank_image must exist in Glance
+#   - OVE mode: sushy_blank_image must exist in Glance
+#   - Appliance mode: appliance image must exist in Glance
 
 - name: Reset OVE nodes for fresh OCP installation
   hosts: localhost
   connection: local
   gather_facts: false
   tasks:
+    # --- OVE mode: rebuild root volumes with blank image ---
     - name: Gather blank image info
       openstack.cloud.image_info:
         cloud: "{{ demo_cloud_name }}"
         image: "{{ sushy_blank_image }}"
       register: blank_image_facts
+      when: install_method | default('ove') == 'ove'
 
     - name: Fail if blank image not found
       ansible.builtin.fail:
         msg: "Blank image '{{ sushy_blank_image }}' not found in Glance"
-      when: blank_image_facts.images | length == 0
+      when:
+        - install_method | default('ove') == 'ove'
+        - blank_image_facts.images | length == 0
 
     - name: Rebuild OVE node root volumes with blank image
       ansible.builtin.command:
@@ -44,7 +46,35 @@
           --image {{ blank_image_facts.images[0].id }}
       loop: "{{ range(0, ove_node_count | int) | list }}"
       changed_when: true
+      when: install_method | default('ove') == 'ove'
 
+    # --- Appliance mode: rebuild boot volumes with appliance image ---
+    - name: Gather appliance image info
+      openstack.cloud.image_info:
+        cloud: "{{ demo_cloud_name }}"
+        image: "{{ appliance_image_name | default('openshift-appliance') }}"
+      register: appliance_image_facts
+      when: install_method | default('ove') == 'appliance'
+
+    - name: Fail if appliance image not found
+      ansible.builtin.fail:
+        msg: "Appliance image '{{ appliance_image_name | default('openshift-appliance') }}' not found in Glance"
+      when:
+        - install_method | default('ove') == 'appliance'
+        - appliance_image_facts.images | length == 0
+
+    - name: Rebuild appliance node boot volumes with appliance image
+      ansible.builtin.command:
+        cmd: >
+          openstack --os-cloud {{ demo_cloud_name }} server rebuild
+          {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
+          --reimage-boot-volume
+          --image {{ appliance_image_facts.images[0].id }}
+      loop: "{{ range(0, ove_node_count | int) | list }}"
+      changed_when: true
+      when: install_method | default('ove') == 'appliance'
+
+    # --- Wait for VMs regardless of mode ---
     - name: Wait for OVE node VMs to reach ACTIVE state after rebuild
       ansible.builtin.command:
         cmd: >

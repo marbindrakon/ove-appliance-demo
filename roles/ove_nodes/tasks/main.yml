@@ -1,13 +1,4 @@
 ---
-- name: Upload OVE agent ISO to Glance
-  openstack.cloud.image:
-    cloud: "{{ demo_cloud_name }}"
-    name: "{{ ove_agent_iso_path | basename }}"
-    filename: "{{ ove_agent_iso_path }}"
-    disk_format: raw
-    container_format: bare
-    state: present
-
 - name: Create OVE node trunks
   ansible.builtin.include_tasks: create_trunk.yml
   loop: "{{ range(0, ove_node_count | int) | product([0, 1]) | list }}"
@@ -17,79 +8,10 @@
     node_idx: "{{ node_trunk_pair[0] }}"
     trunk_idx: "{{ node_trunk_pair[1] }}"
 
-# Two volumes per node:
-#   boot_index: 0  device_type: disk                    — OS install target (blank; no bootloader on first boot)
-#   boot_index: 1  device_type: disk  disk_bus: virtio  — USB flash drive pre-provisioned from agent ISO
-# On first boot the root volume is blank, so the VM falls through to the USB and runs the
-# agent installer, which writes OCP to the root volume. Subsequent reboots boot from root.
+- name: Create OVE nodes (agent ISO method)
+  ansible.builtin.include_tasks: create_ove_nodes.yml
+  when: install_method | default('ove') == 'ove'
 
-- name: Create OVE node root volumes
-  openstack.cloud.volume:
-    cloud: "{{ demo_cloud_name }}"
-    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-volume"
-    image: "{{ sushy_blank_image }}"
-    size: "{{ ove_node_disk_gb }}"
-    state: present
-  loop: "{{ range(0, ove_node_count | int) | list }}"
-
-- name: Create OVE node USB volumes from agent ISO
-  openstack.cloud.volume:
-    cloud: "{{ demo_cloud_name }}"
-    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-usb"
-    image: "{{ ove_agent_iso_path | basename }}"
-    size: "{{ ove_usb_volume_gb }}"
-    state: present
-  loop: "{{ range(0, ove_node_count | int) | list }}"
-
-- name: Gather OVE node USB volume IDs
-  openstack.cloud.volume_info:
-    cloud: "{{ demo_cloud_name }}"
-    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-usb"
-  loop: "{{ range(0, ove_node_count | int) | list }}"
-  register: usb_volume_facts
-
-- name: Gather OVE node boot volume IDs
-  openstack.cloud.volume_info:
-    cloud: "{{ demo_cloud_name }}"
-    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-volume"
-  loop: "{{ range(0, ove_node_count | int) | list }}"
-  register: boot_volume_facts
-
-# openstack.cloud.server requires image or boot_volume even with block_device_mapping_v2,
-# so use the CLI directly to pass BDM v2 with the required device_type and boot_index.
-- name: Check which OVE node VMs already exist
-  ansible.builtin.command:
-    cmd: >
-      openstack --os-cloud {{ demo_cloud_name }} server show
-      {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
-      -f value -c status
-  loop: "{{ range(0, ove_node_count | int) | list }}"
-  register: vm_status
-  failed_when: false
-  changed_when: false
-
-- name: Create OVE node VMs
-  ansible.builtin.command:
-    argv:
-      - openstack
-      - "--os-cloud"
-      - "{{ demo_cloud_name }}"
-      - server
-      - create
-      - "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
-      - "--flavor"
-      - "{{ ove_node_flavor }}"
-      - "--block-device"
-      - "uuid={{ boot_volume_facts.results[item | int].volumes[0].id }},source_type=volume,destination_type=volume,boot_index=0,device_type=disk,delete_on_termination=false"
-      - "--block-device"
-      - "uuid={{ usb_volume_facts.results[item | int].volumes[0].id }},source_type=volume,destination_type=volume,boot_index=1,device_type=disk,disk_bus=virtio,delete_on_termination=false"
-      - "--nic"
-      - "port-id={{ hostvars[inventory_hostname]['trunk0_port_id_node' + item | string] }}"
-      - "--nic"
-      - "port-id={{ hostvars[inventory_hostname]['trunk1_port_id_node' + item | string] }}"
-      - "--property"
-      - "role=ove_node"
-      - "--wait"
-  loop: "{{ range(0, ove_node_count | int) | list }}"
-  when: vm_status.results[item | int].rc != 0
-  changed_when: true
+- name: Create appliance nodes (factory imaging method)
+  ansible.builtin.include_tasks: create_appliance_nodes.yml
+  when: install_method | default('ove') == 'appliance'

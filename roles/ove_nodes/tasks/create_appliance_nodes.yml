@@ -1,0 +1,75 @@
+---
+# create_appliance_nodes.yml — OpenShift appliance factory imaging method
+#
+# Single boot volume per node from the pre-built appliance disk image, plus a
+# blank CD-ROM volume for sushy virtual media delivery of configuration ISOs.
+# The appliance boots directly into the agent installer — no UEFI intervention needed.
+
+- name: Create appliance node boot volumes
+  openstack.cloud.volume:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-volume"
+    image: "{{ appliance_image_name }}"
+    size: "{{ appliance_disk_size_gb }}"
+    state: present
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+
+- name: Create appliance node CD-ROM volumes for virtual media
+  openstack.cloud.volume:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-cdrom"
+    image: "{{ sushy_blank_image }}"
+    size: "{{ appliance_cdrom_volume_gb }}"
+    state: present
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+
+- name: Gather appliance node boot volume IDs
+  openstack.cloud.volume_info:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-volume"
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  register: boot_volume_facts
+
+- name: Gather appliance node CD-ROM volume IDs
+  openstack.cloud.volume_info:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-cdrom"
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  register: cdrom_volume_facts
+
+- name: Check which appliance node VMs already exist
+  ansible.builtin.command:
+    cmd: >
+      openstack --os-cloud {{ demo_cloud_name }} server show
+      {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
+      -f value -c status
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  register: vm_status
+  failed_when: false
+  changed_when: false
+
+- name: Create appliance node VMs
+  ansible.builtin.command:
+    argv:
+      - openstack
+      - "--os-cloud"
+      - "{{ demo_cloud_name }}"
+      - server
+      - create
+      - "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
+      - "--flavor"
+      - "{{ ove_node_flavor }}"
+      - "--block-device"
+      - "uuid={{ boot_volume_facts.results[item | int].volumes[0].id }},source_type=volume,destination_type=volume,boot_index=0,device_type=disk,delete_on_termination=false"
+      - "--block-device"
+      - "uuid={{ cdrom_volume_facts.results[item | int].volumes[0].id }},source_type=volume,destination_type=volume,boot_index=1,device_type=cdrom,disk_bus=sata,delete_on_termination=false"
+      - "--nic"
+      - "port-id={{ hostvars[inventory_hostname]['trunk0_port_id_node' + item | string] }}"
+      - "--nic"
+      - "port-id={{ hostvars[inventory_hostname]['trunk1_port_id_node' + item | string] }}"
+      - "--property"
+      - "role=ove_node"
+      - "--wait"
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  when: vm_status.results[item | int].rc != 0
+  changed_when: true

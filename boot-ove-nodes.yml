@@ -17,6 +17,11 @@
   connection: local
   gather_facts: false
   tasks:
+    - name: Fail if not in OVE mode
+      ansible.builtin.fail:
+        msg: "This playbook is only applicable when install_method == 'ove' (current: {{ install_method | default('ove') }})"
+      when: install_method | default('ove') != 'ove'
+
     - name: Upload OVE agent ISO to Glance
       openstack.cloud.image:
         cloud: "{{ demo_cloud_name }}"

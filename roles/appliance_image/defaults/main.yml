@@ -1,0 +1,43 @@
+---
+appliance_ocp_version: "4.20"
+appliance_ocp_channel: "stable"
+appliance_cpu_arch: "x86_64"
+appliance_disk_size_gb: 250
+appliance_image_name: "{{project_name}}-factory-image"
+appliance_container_image: "quay.io/redhat-user-workloads/crt-nshift-appliance-tenant/appliance/appliance@sha256:bcdf91c38a030f1ad5c9448d2953192f9e08035b736b5a5c3b94414fad4105a5"
+appliance_assets_dir: /root/appliance-assets
+appliance_enable_interactive_flow: false
+appliance_operators:
+  - catalog: registry.redhat.io/redhat/redhat-operator-index:v{{ appliance_ocp_version }}
+    packages:
+      - name: ansible-automation-platform-operator
+        channels:
+          - name: stable-2.6
+          - name: stable-2.6-cluster-scoped
+      - name: odf-operator
+        channels:
+          - name: stable-4.20
+      - name: odf-dependencies
+        channels:
+          - name: stable-4.20
+      - name: openshift-gitops-operator
+        channels:
+          - name: latest
+      - name: self-node-remediation
+      - name: sriov-network-operator
+      - name: metallb-operator
+      - name: node-healthcheck-operator
+      - name: node-maintenance-operator
+      - name: openshift-cert-manager-operator
+      - name: nfd
+      - name: local-storage-operator
+      - name: kubernetes-nmstate-operator
+      - name: kubevirt-hyperconverged
+      - name: cluster-observability-operator
+      - name: fence-agents-remediation
+appliance_additional_images:
+  - name: registry.redhat.io/rhel10/rhel-guest-image:latest
+  - name: registry.redhat.io/rhel9/support-tools:latest
+  - name: registry.redhat.io/ubi9/ubi:latest
+appliance_blocked_images: null
+appliance_fips: false
