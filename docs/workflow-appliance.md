@@ -1,0 +1,190 @@
+# Appliance Mode Workflow (Factory Disk Image)
+
+This guide walks through deploying an OVE demo environment using the
+**appliance** method (`install_method: "appliance"`). In this mode each node
+boots from a pre-built `appliance.raw` disk image that contains the agent
+installer and all required operators. Nodes boot directly into the installer
+with no UEFI intervention.
+
+## Prerequisites
+
+- Python 3 with `venv`
+- A `clouds.yaml` with credentials that can create projects and users
+- An OpenStack keypair for SSH access to the bastion
+- A pull secret from [console.redhat.com](https://console.redhat.com/)
+- (Optional) A pre-built `appliance.raw` file or an existing Glance image
+
+## 1. Set Up the Python Environment
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+ansible-galaxy collection install -r requirements.yml
+```
+
+## 2. Configure Inventory
+
+```bash
+cp inventory/group_vars/all.yml.sample inventory/group_vars/all.yml
+```
+
+Edit `inventory/group_vars/all.yml` and set:
+
+| Variable | Description |
+|---|---|
+| `install_method` | `"appliance"` |
+| `cloud_name` | Cloud name from your `clouds.yaml` |
+| `ssh_key_name` | OpenStack keypair name for bastion SSH access |
+| `os_auth_url` | OpenStack identity endpoint |
+| `os_region` | OpenStack region name |
+| `rh_subscription_org` | Red Hat subscription org ID |
+| `rh_subscription_activation_key` | Red Hat activation key |
+| `pull_secret` | Pull secret from console.redhat.com |
+
+### Appliance Image Source
+
+There are three ways to supply the appliance image, checked in priority order:
+
+1. **Existing Glance image** (fastest) -- Set `appliance_glance_image` to the
+   name or ID of an image already in Glance. The playbook uses it directly and
+   does **not** delete it on teardown. Use this when sharing a single image
+   across multiple deployments.
+
+2. **Pre-built image on the controller** -- Set `appliance_image_path` to the
+   local path of an `appliance.raw` file. The playbook uploads it to Glance
+   during Play 4, skipping the bastion build.
+
+3. **Build on the bastion** (default) -- Leave both `appliance_glance_image`
+   and `appliance_image_path` unset. The playbook builds the image on the
+   bastion during Play 3 using `podman` and the `openshift-appliance`
+   container, then uploads it to Glance. This takes the longest but requires
+   no pre-existing image.
+
+### Optional Tuning
+
+| Variable | Default | Description |
+|---|---|---|
+| `appliance_ocp_version` | `4.20` | OpenShift version for the appliance |
+| `appliance_ocp_channel` | `stable` | Release channel |
+| `appliance_disk_size_gb` | `250` | Boot volume size (GB) |
+| `appliance_cdrom_volume_gb` | `1` | CD-ROM volume size (GB) |
+| `ove_node_flavor` | `g1.4xlarge` | Nova flavor for OVE nodes |
+| `ove_node_count` | `4` | Number of OVE nodes |
+| `ove_node_mgmt_ips` | `10.10.0.11-14` | Fixed management IPs (one per node) |
+| `cluster_name` | `ove` | Cluster name for DNS |
+| `base_domain` | `example.com` | Base DNS domain |
+| `api_vip` | `10.10.0.100` | Kubernetes API VIP |
+| `ingress_vip` | `10.10.0.101` | Ingress VIP |
+
+The appliance image includes a curated set of operators (ODF, GitOps, SR-IOV,
+MetalLB, KubeVirt, cert-manager, NMState, and others). See
+`roles/appliance_image/defaults/main.yml` for the full list. Customize by
+editing `appliance_operators` in your inventory.
+
+## 3. Deploy the Environment
+
+```bash
+source .venv/bin/activate
+ansible-playbook site.yml
+```
+
+The playbook runs four plays in order:
+
+1. **Create infrastructure** (localhost) -- OpenStack project, networks,
+   subnets, router, bastion VM with a floating IP.
+2. **Configure bastion** (bastion via SSH) -- SSH key generation, RHSM
+   subscription, GNOME desktop, firewall, BIND DNS, NTP, sushy-emulator.
+   The SSH public key generated here is embedded in the appliance image so the
+   bastion can SSH to installed nodes.
+3. **Build appliance image** (bastion via SSH) -- Templates
+   `appliance-config.yaml` with cluster settings, pull secret, and the
+   bastion's SSH key, then runs the appliance builder container. Uploads the
+   resulting `appliance.raw` to Glance. *Skipped if using an existing Glance
+   image or a pre-built local image.*
+4. **Create OVE nodes** (localhost) -- Create trunk ports with VLAN sub-ports,
+   create boot volumes from the appliance image, create blank CD-ROM volumes
+   for virtual media, launch VMs.
+
+The playbook is idempotent and safe to re-run.
+
+## 4. Monitor the Installation
+
+Unlike OVE mode, appliance nodes boot directly into the agent installer with
+no manual intervention. After `site.yml` completes:
+
+1. Each node has two volumes:
+   - **boot_index 0** (disk): boot volume from `appliance.raw`
+   - **boot_index 1** (cdrom): blank CD-ROM for sushy virtual media
+2. The node boots from the appliance image and the agent installer starts
+   automatically.
+3. Monitor progress via the node console (Horizon or
+   `openstack console url show`) or by SSH from the bastion once the node is
+   reachable on its management IP.
+
+## 5. Build the Appliance Image Separately
+
+To build or rebuild the appliance image without running the full playbook:
+
+```bash
+ansible-playbook build-appliance-image.yml
+```
+
+This runs only the image build on the bastion. Useful for iterating on
+`appliance_operators` or `appliance_ocp_version` without re-creating the
+infrastructure.
+
+## 6. Reset Nodes (Re-install)
+
+To return nodes to their factory state and re-run the installer without
+destroying the rest of the environment:
+
+```bash
+ansible-playbook reset-ove-nodes.yml
+```
+
+This rebuilds each node's boot volume with the appliance image. The CD-ROM
+volume is left untouched. On next boot the node enters the agent installer
+fresh, with no manual intervention required.
+
+## 7. Tear Down Everything
+
+To destroy the entire environment including the OpenStack project:
+
+```bash
+ansible-playbook teardown.yml
+```
+
+This deletes, in order: OVE node VMs and volumes, bastion (FIP, VM, volume,
+ports), trunk ports and sub-ports, router and networks, sushy user, app
+credential, project, clouds.yaml entries, and the `.ove-demo-cache/`
+directory.
+
+**Note:** If `appliance_glance_image` was set (using a pre-existing image),
+that image is **not** deleted during teardown.
+
+## Network Layout
+
+Each OVE node gets two trunk ports (trunk0, trunk1). The management network
+(`10.10.0.0/24`) is the native/untagged VLAN on the parent port. Additional
+networks are carried as tagged VLAN sub-ports:
+
+| VLAN | Network | CIDR |
+|------|---------|------|
+| 10 | Management | `10.10.0.0/24` |
+| 20 | Storage | `10.20.0.0/24` |
+| 30 | Workload 1 | `192.168.10.0/24` |
+| 40 | Workload 2 | `192.168.20.0/24` |
+| 50 | Workload 3 | `192.168.30.0/24` |
+
+The bastion sits on a separate bastion network (`10.0.0.0/24`) with a
+floating IP, and also has a port on the management network at
+`10.10.0.1`. BIND on the bastion is authoritative for the cluster domain
+and forwards all other queries to `dns_forwarders`.
+
+## Sushy Virtual Media
+
+The CD-ROM volume on each node (`boot_index 1`, SATA bus) is used by
+sushy-emulator for virtual media delivery. The sushy service on the bastion
+exposes a Redfish API (port 8000) that can mount configuration ISOs to this
+CD-ROM, enabling automated node configuration without direct console access.
