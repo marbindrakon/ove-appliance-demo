@@ -76,6 +76,7 @@ There are three ways to supply the appliance image, checked in priority order:
 | `base_domain` | `example.com` | Base DNS domain |
 | `api_vip` | `10.10.0.100` | Kubernetes API VIP |
 | `ingress_vip` | `10.10.0.101` | Ingress VIP |
+| `appliance_enable_interactive_flow` | `false` | Enable interactive web UI instead of config image |
 
 The appliance image includes a curated set of operators (ODF, GitOps, SR-IOV,
 MetalLB, KubeVirt, cert-manager, NMState, and others). See
@@ -108,21 +109,43 @@ The playbook runs four plays in order:
 
 The playbook is idempotent and safe to re-run.
 
-## 4. Monitor the Installation
+## 4. Configure and Build the OpenShift Cluster
 
-Unlike OVE mode, appliance nodes boot directly into the agent installer with
-no manual intervention. After `site.yml` completes:
+The automation provisions the infrastructure and boots the nodes but does
+**not** build the OpenShift cluster itself. After `site.yml` completes, each
+node has two volumes:
 
-1. Each node has two volumes:
-   - **boot_index 0** (disk): boot volume from `appliance.raw`
-   - **boot_index 1** (cdrom): blank CD-ROM for sushy virtual media
-2. The node boots from the appliance image and the agent installer starts
-   automatically.
-3. Monitor progress via the node console (Horizon or
-   `openstack console url show`) or by SSH from the bastion once the node is
-   reachable on its management IP.
+- **boot_index 0** (disk): boot volume from `appliance.raw`
+- **boot_index 1** (cdrom): blank CD-ROM for sushy virtual media
 
-## 5. Build the Appliance Image Separately
+The node boots from the appliance image and the agent installer starts
+automatically. There are two ways to deliver the cluster configuration,
+depending on how the appliance image was built:
+
+### Option A: Config image via sushy virtual media (default)
+
+When `appliance_enable_interactive_flow` is `false` (the default), the
+appliance expects a configuration ISO mounted via virtual media. From the
+bastion VM, build a config image containing the cluster configuration and
+use sushy-emulator's Redfish API (port 8000) to mount it to each node's
+CD-ROM volume. The agent installer reads the config image and proceeds with
+installation.
+
+### Option B: Interactive web UI
+
+If the appliance image was built with `appliance_enable_interactive_flow`
+set to `true`, the nodes boot into an interactive mode instead. Log in to the
+bastion VM (via SSH or the GNOME desktop) and use the assisted installer web
+UI to configure and start the cluster installation, the same way as the agent
+ISO method.
+
+## 5. Monitor Progress
+
+Monitor installation progress via the node console (Horizon or
+`openstack console url show`) or by SSH from the bastion once a node is
+reachable on its management IP.
+
+## 6. Build the Appliance Image Separately
 
 To build or rebuild the appliance image without running the full playbook:
 
@@ -134,7 +157,7 @@ This runs only the image build on the bastion. Useful for iterating on
 `appliance_operators` or `appliance_ocp_version` without re-creating the
 infrastructure.
 
-## 6. Reset Nodes (Re-install)
+## 7. Reset Nodes (Re-install)
 
 To return nodes to their factory state and re-run the installer without
 destroying the rest of the environment:
@@ -147,7 +170,7 @@ This rebuilds each node's boot volume with the appliance image. The CD-ROM
 volume is left untouched. On next boot the node enters the agent installer
 fresh, with no manual intervention required.
 
-## 7. Tear Down Everything
+## 8. Tear Down Everything
 
 To destroy the entire environment including the OpenStack project:
 

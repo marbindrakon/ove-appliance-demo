@@ -103,7 +103,15 @@ installer:
 
 Repeat for each node.
 
-## 5. Reset Nodes (Re-install)
+## 5. Build the OpenShift Cluster
+
+The automation provisions the infrastructure and boots the nodes but does
+**not** build the OpenShift cluster itself. Once all nodes have booted into
+the agent installer, log in to the bastion VM (via SSH or the GNOME desktop)
+and use the assisted installer web UI to configure and start the cluster
+installation.
+
+## 6. Reset Nodes (Re-install)
 
 To wipe the root volumes and re-run the installer without destroying the rest
 of the environment:
@@ -117,7 +125,7 @@ left untouched. On next boot the node falls through to the USB device again
 and performs a clean installation. You will need to repeat the UEFI boot
 selection.
 
-## 6. Tear Down Everything
+## 7. Tear Down Everything
 
 To destroy the entire environment including the OpenStack project:
 
