@@ -12,9 +12,6 @@ Two install methods are controlled by `install_method` in inventory:
 ## Prerequisites
 
 - Python 3 with `venv`
-- Ansible 2.14+
-- `openstack.cloud`, `ansible.utils`, `ansible.posix`, and `community.general` collections
-- OpenStack CLI (`python-openstackclient`)
 - A `clouds.yaml` with credentials that can create projects and users
 
 ## Setup
@@ -23,9 +20,11 @@ Two install methods are controlled by `install_method` in inventory:
 # Create and activate a virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
-pip install ansible python-openstackclient openstacksdk
 
-# Install required Ansible collections
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Install Ansible collections
 ansible-galaxy collection install -r requirements.yml
 ```
 
