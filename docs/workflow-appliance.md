@@ -9,10 +9,10 @@ with no UEFI intervention.
 ## Prerequisites
 
 - Python 3 with `venv`
-- A `clouds.yaml` with credentials that can create projects and users
-- An OpenStack keypair for SSH access to the bastion
+- **OpenStack backend**: A `clouds.yaml` with admin credentials; an OpenStack keypair for bastion SSH
+- **libvirt backend**: A RHEL KVM host with root SSH access
 - A pull secret from [console.redhat.com](https://console.redhat.com/)
-- (Optional) A pre-built `appliance.raw` file or an existing Glance image
+- (Optional) A pre-built `appliance.raw` file, an existing Glance image, or an image already on the KVM host
 
 ## 1. Set Up the Python Environment
 
@@ -34,17 +34,31 @@ Edit `inventory/group_vars/all.yml` and set:
 | Variable | Description |
 |---|---|
 | `install_method` | `"appliance"` |
-| `cloud_name` | Cloud name from your `clouds.yaml` |
-| `ssh_key_name` | OpenStack keypair name for bastion SSH access |
-| `os_auth_url` | OpenStack identity endpoint |
-| `os_region` | OpenStack region name |
+| `infra_backend` | `"openstack"` or `"libvirt"` |
 | `rh_subscription_org` | Red Hat subscription org ID |
 | `rh_subscription_activation_key` | Red Hat activation key |
 | `pull_secret` | Pull secret from console.redhat.com |
 
+**OpenStack-specific:**
+
+| Variable | Description |
+|---|---|
+| `cloud_name` | Cloud name from your `clouds.yaml` |
+| `ssh_key_name` | OpenStack keypair name for bastion SSH access |
+| `os_auth_url` | OpenStack identity endpoint |
+| `os_region` | OpenStack region name |
+
+**libvirt-specific:**
+
+| Variable | Description |
+|---|---|
+| `kvm_host` | IP or hostname of the KVM host |
+| `bastion_qcow2_image` | Path to RHEL 9.x qcow2 image on the KVM host |
+| `ssh_public_key` | SSH public key content for bastion cloud-init |
+
 ### Appliance Image Source
 
-There are three ways to supply the appliance image, checked in priority order:
+**OpenStack** — three options, checked in priority order:
 
 1. **Existing Glance image** (fastest) -- Set `appliance_glance_image` to the
    name or ID of an image already in Glance. The playbook uses it directly and
@@ -55,11 +69,23 @@ There are three ways to supply the appliance image, checked in priority order:
    local path of an `appliance.raw` file. The playbook uploads it to Glance
    during Play 4, skipping the bastion build.
 
-3. **Build on the bastion** (default) -- Leave both `appliance_glance_image`
-   and `appliance_image_path` unset. The playbook builds the image on the
-   bastion during Play 3 using `podman` and the `openshift-appliance`
-   container, then uploads it to Glance. This takes the longest but requires
-   no pre-existing image.
+3. **Build on the bastion** (default) -- Leave both unset. The playbook builds
+   the image on the bastion during Play 3 using `podman` and the
+   `openshift-appliance` container, then uploads it to Glance.
+
+**libvirt** — two options:
+
+1. **Pre-built image on the KVM host** (fastest) -- Set
+   `appliance_kvm_host_image_path` to the absolute path of an `appliance.raw`
+   file already on the KVM host. This skips Play 3 entirely — no bastion
+   build, no transfer.
+
+2. **Build on the bastion** (default) -- Leave `appliance_kvm_host_image_path`
+   unset. The playbook builds the image on the bastion during Play 3, then
+   transfers it to the KVM host.
+
+For libvirt, a qcow2 backing file chain is used: a shared `appliance-base.qcow2`
+with thin-provisioned per-node overlay disks. Node resets are near-instant.
 
 ### Optional Tuning
 
@@ -90,22 +116,20 @@ source .venv/bin/activate
 ansible-playbook site.yml
 ```
 
-The playbook runs four plays in order:
+The playbook validates inputs, then runs backend-specific plays:
 
-1. **Create infrastructure** (localhost) -- OpenStack project, networks,
-   subnets, router, bastion VM with a floating IP.
-2. **Configure bastion** (bastion via SSH) -- SSH key generation, RHSM
-   subscription, GNOME desktop, firewall, BIND DNS, NTP, sushy-emulator.
-   The SSH public key generated here is embedded in the appliance image so the
-   bastion can SSH to installed nodes.
-3. **Build appliance image** (bastion via SSH) -- Templates
-   `appliance-config.yaml` with cluster settings, pull secret, and the
-   bastion's SSH key, then runs the appliance builder container. Uploads the
-   resulting `appliance.raw` to Glance. *Skipped if using an existing Glance
-   image or a pre-built local image.*
-4. **Create OVE nodes** (localhost) -- Create trunk ports with VLAN sub-ports,
-   create boot volumes from the appliance image, create blank CD-ROM volumes
-   for virtual media, launch VMs.
+**OpenStack:**
+1. **Create infrastructure** (localhost) -- project, networks, subnets, router, bastion VM with a floating IP.
+2. **Configure bastion** (bastion via SSH) -- SSH key, RHSM, desktop, firewall, BIND DNS, NTP, sushy-emulator. The SSH public key generated here is embedded in the appliance image so the bastion can SSH to installed nodes.
+3. **Build appliance image** (bastion via SSH) -- Templates `appliance-config.yaml`, runs the builder container, uploads to Glance. *Skipped if using an existing Glance image or a pre-built local image.*
+4. **Create OVE nodes** (localhost) -- trunk ports, boot volumes from the appliance image, CD-ROM volumes for virtual media, launch VMs.
+
+**libvirt:**
+1. **Prepare KVM host** -- packages, libvirtd, OVS, storage pool, networking, bastion VM.
+2. **Configure bastion** (bastion via SSH) -- SSH key, RHSM, desktop, firewall, BIND DNS, NTP.
+3. **Build appliance image** (bastion via SSH) -- same as OpenStack but transfers to KVM host instead of Glance. *Skipped if `appliance_kvm_host_image_path` is set.*
+4. **Create OVE nodes** (kvm-host) -- qcow2 overlay disks from appliance base, domain XML, OVS trunk ports.
+5. **Sushy-emulator** (kvm-host) -- sushy with libvirt driver.
 
 The playbook is idempotent and safe to re-run.
 
@@ -141,9 +165,9 @@ ISO method.
 
 ## 5. Monitor Progress
 
-Monitor installation progress via the node console (Horizon or
-`openstack console url show`) or by SSH from the bastion once a node is
-reachable on its management IP.
+Monitor installation progress via the node console (OpenStack: Horizon or
+`openstack console url show`; libvirt: `virt-manager` or `virsh console`) or
+by SSH from the bastion once a node is reachable on its management IP.
 
 ## 6. Build the Appliance Image Separately
 
@@ -172,19 +196,23 @@ fresh, with no manual intervention required.
 
 ## 8. Tear Down Everything
 
-To destroy the entire environment including the OpenStack project:
+To destroy the entire environment:
 
 ```bash
 ansible-playbook teardown.yml
 ```
 
-This deletes, in order: OVE node VMs and volumes, bastion (FIP, VM, volume,
+**OpenStack:** Deletes OVE node VMs and volumes, bastion (FIP, VM, volume,
 ports), trunk ports and sub-ports, router and networks, sushy user, app
-credential, project, clouds.yaml entries, and the `.ove-demo-cache/`
-directory.
+credential, project, and clouds.yaml entries. If `appliance_glance_image` was
+set, that image is **not** deleted.
 
-**Note:** If `appliance_glance_image` was set (using a pre-existing image),
-that image is **not** deleted during teardown.
+**libvirt:** Destroys OVE node domains and disks, bastion domain and disks,
+OVS bridge, NAT network, dnsmasq and sushy services. Pass
+`-e destroy_shared=true` to also remove the shared storage pool and appliance
+base images.
+
+Both backends delete the lab's `.ove-demo-cache/lab-{lab_id}/` directory.
 
 ## Network Layout
 
@@ -207,7 +235,9 @@ and forwards all other queries to `dns_forwarders`.
 
 ## Sushy Virtual Media
 
-The CD-ROM volume on each node (`boot_index 1`, SATA bus) is used by
-sushy-emulator for virtual media delivery. The sushy service on the bastion
-exposes a Redfish API (port 8000) that can mount configuration ISOs to this
-CD-ROM, enabling automated node configuration without direct console access.
+The CD-ROM volume on each node is used by sushy-emulator for virtual media
+delivery of configuration ISOs, enabling automated node configuration without
+direct console access.
+
+- **OpenStack**: Sushy runs on the bastion with the OpenStack driver, port `8000 + lab_id`.
+- **libvirt**: Sushy runs on the KVM host with the libvirt driver, reachable at `10.10.{lab_id}.254:{8000+lab_id}`.

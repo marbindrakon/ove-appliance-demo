@@ -9,9 +9,9 @@ OpenShift to the root volume.
 ## Prerequisites
 
 - Python 3 with `venv`
-- A `clouds.yaml` with credentials that can create projects and users
+- **OpenStack backend**: A `clouds.yaml` with admin credentials; an OpenStack keypair for bastion SSH
+- **libvirt backend**: A RHEL KVM host with root SSH access
 - An OVE agent ISO file (typically `agent-ove.x86_64.iso`, ~41 GB)
-- An OpenStack keypair for SSH access to the bastion
 
 ## 1. Set Up the Python Environment
 
@@ -33,22 +33,38 @@ Edit `inventory/group_vars/all.yml` and set:
 | Variable | Description |
 |---|---|
 | `install_method` | `"ove"` (this is the default) |
+| `infra_backend` | `"openstack"` or `"libvirt"` |
+| `rh_subscription_org` | Red Hat subscription org ID |
+| `rh_subscription_activation_key` | Red Hat activation key |
+
+**OpenStack-specific:**
+
+| Variable | Description |
+|---|---|
 | `cloud_name` | Cloud name from your `clouds.yaml` |
 | `ssh_key_name` | OpenStack keypair name for bastion SSH access |
 | `os_auth_url` | OpenStack identity endpoint |
 | `os_region` | OpenStack region name |
-| `rh_subscription_org` | Red Hat subscription org ID |
-| `rh_subscription_activation_key` | Red Hat activation key |
+
+**libvirt-specific:**
+
+| Variable | Description |
+|---|---|
+| `kvm_host` | IP or hostname of the KVM host |
+| `bastion_qcow2_image` | Path to RHEL 9.x qcow2 image on the KVM host |
+| `ssh_public_key` | SSH public key content for bastion cloud-init |
 
 ### Agent ISO Source
 
-By default the playbook uploads the ISO from the controller at the path
-specified by `ove_agent_iso_path` (defaults to `./agent-ove.x86_64.iso`).
-Place your agent ISO in the project root or change the path.
+**OpenStack:** By default the playbook uploads the ISO from the controller at
+the path specified by `ove_agent_iso_path` (defaults to
+`./agent-ove.x86_64.iso`). To use an ISO that already exists in Glance, set
+`ove_agent_glance_image` to the image name or ID — this skips the upload, and
+the image is not deleted on teardown.
 
-To use an ISO that already exists in Glance, set `ove_agent_glance_image` to
-the image name or ID. This skips the upload, and the image is not deleted on
-teardown.
+**libvirt:** By default the ISO is transferred from the controller to the KVM
+host. To use an ISO already on the KVM host, set `ove_kvm_host_iso_path` to
+its absolute path — this skips the transfer.
 
 ### Optional Tuning
 
@@ -71,16 +87,20 @@ source .venv/bin/activate
 ansible-playbook site.yml
 ```
 
-The playbook runs four plays in order:
+The playbook validates inputs, then runs backend-specific plays:
 
-1. **Create infrastructure** (localhost) -- OpenStack project, networks,
-   subnets, router, bastion VM with a floating IP.
-2. **Configure bastion** (bastion via SSH) -- SSH key generation, RHSM
-   subscription, GNOME desktop, firewall, BIND DNS, NTP, sushy-emulator.
+**OpenStack:**
+1. **Create infrastructure** (localhost) -- project, networks, subnets, router, bastion VM with a floating IP.
+2. **Configure bastion** (bastion via SSH) -- SSH key, RHSM, desktop, firewall, BIND DNS, NTP, sushy-emulator.
 3. *(skipped in OVE mode)*
-4. **Create OVE nodes** (localhost) -- Upload agent ISO to Glance (unless
-   `ove_agent_glance_image` is set), create trunk ports with VLAN sub-ports,
-   create root and USB volumes, launch VMs.
+4. **Create OVE nodes** (localhost) -- Upload agent ISO to Glance (unless `ove_agent_glance_image` is set), create trunk ports, root and USB volumes, launch VMs.
+
+**libvirt:**
+1. **Prepare KVM host** -- packages, libvirtd, OVS, storage pool, networking, bastion VM.
+2. **Configure bastion** (bastion via SSH) -- SSH key, RHSM, desktop, firewall, BIND DNS, NTP.
+3. *(skipped in OVE mode)*
+4. **Create OVE nodes** (kvm-host) -- disk images, domain XML, OVS trunk ports.
+5. **Sushy-emulator** (kvm-host) -- sushy with libvirt driver.
 
 The playbook is idempotent and safe to re-run.
 
@@ -95,7 +115,7 @@ On first boot the VM fails to boot from the blank root volume and drops into
 the UEFI shell. You must manually select the USB device to start the agent
 installer:
 
-1. Open the node's console (Horizon or `openstack console url show`).
+1. Open the node's console (OpenStack: Horizon or `openstack console url show`; libvirt: `virt-manager` or `virsh console`).
 2. Enter UEFI setup and change the boot order to boot from the USB device.
 3. Save and reboot.
 4. The agent installer starts and writes OpenShift to the root volume.
@@ -133,10 +153,16 @@ To destroy the entire environment including the OpenStack project:
 ansible-playbook teardown.yml
 ```
 
-This deletes, in order: OVE node VMs and volumes, bastion (FIP, VM, volume,
+**OpenStack:** Deletes OVE node VMs and volumes, bastion (FIP, VM, volume,
 ports), trunk ports and sub-ports, router and networks, sushy user, app
-credential, project, clouds.yaml entries, and the `.ove-demo-cache/`
-directory.
+credential, project, and clouds.yaml entries.
+
+**libvirt:** Destroys OVE node domains and disks, bastion domain and disks,
+OVS bridge, NAT network, dnsmasq and sushy services. Pass
+`-e destroy_shared=true` to also remove the shared storage pool and appliance
+base images.
+
+Both backends delete the lab's `.ove-demo-cache/lab-{lab_id}/` directory.
 
 ## Network Layout
 
