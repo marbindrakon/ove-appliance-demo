@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# manage-labs.sh — Deploy, teardown, or reset one or more labs in parallel
+# lab-manager-cli.sh — Deploy, teardown, or reset one or more labs in parallel
 #
 # Usage:
-#   ./manage-labs.sh deploy   labs/openstack-appliance.yml labs/libvirt-ove.yml
-#   ./manage-labs.sh teardown labs/openstack-appliance.yml
-#   ./manage-labs.sh reset    labs/libvirt-appliance.yml
-#   ./manage-labs.sh deploy-all     # all .yml files in labs/
-#   ./manage-labs.sh teardown-all
-#   ./manage-labs.sh reset-all
+#   ./lab-manager-cli.sh deploy   labs/openstack-appliance.yml labs/libvirt-ove.yml
+#   ./lab-manager-cli.sh teardown labs/openstack-appliance.yml
+#   ./lab-manager-cli.sh reset    labs/libvirt-appliance.yml
+#   ./lab-manager-cli.sh deploy-all     # all .yml files in labs/
+#   ./lab-manager-cli.sh teardown-all
+#   ./lab-manager-cli.sh reset-all
 
 set -euo pipefail
 
@@ -16,6 +16,10 @@ shift
 
 LOG_DIR="logs/$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$LOG_DIR"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+STATE_ROOT="${SCRIPT_DIR}/.ove-demo-cache/tui"
+CALLBACK_DIR="${SCRIPT_DIR}/callback_plugins"
 
 declare -A PLAYBOOKS=(
     [deploy]=site.yml
@@ -28,13 +32,24 @@ run_lab() {
     local lab_name
     lab_name=$(basename "$lab_file" .yml)
     local log_file="${LOG_DIR}/${lab_name}.log"
+    local state_dir="${STATE_ROOT}/${lab_name}"
+
+    mkdir -p "$state_dir"
 
     echo "[$(date +%H:%M:%S)] Starting ${lab_name} → ${log_file}"
-    if ansible-playbook "$playbook" -e "@${lab_file}" > "$log_file" 2>&1; then
+    if OVE_LAB_NAME="$lab_name" \
+       OVE_STATE_DIR="$state_dir" \
+       OVE_ACTION="${ACTION%-all}" \
+       ANSIBLE_CALLBACK_PLUGINS="$CALLBACK_DIR" \
+       ANSIBLE_CALLBACKS_ENABLED="ove_tui" \
+       ansible-playbook "$playbook" -e "@${lab_file}" > "$log_file" 2>&1; then
         echo "[$(date +%H:%M:%S)] ✓ ${lab_name} succeeded"
+        # Copy log to state dir for TUI access
+        cp "$log_file" "$state_dir/ansible.log"
         return 0
     else
         echo "[$(date +%H:%M:%S)] ✗ ${lab_name} FAILED — see ${log_file}"
+        cp "$log_file" "$state_dir/ansible.log"
         return 1
     fi
 }

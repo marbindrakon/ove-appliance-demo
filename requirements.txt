@@ -3,3 +3,5 @@ openstacksdk
 python-openstackclient
 netaddr
 jmespath
+textual>=0.50
+pyyaml

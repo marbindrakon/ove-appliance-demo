@@ -104,21 +104,31 @@ ansible-playbook build-appliance-image.yml
 
 ### Multiple Labs
 
-The `manage-labs.sh` script deploys, tears down, or resets multiple labs in parallel. Each lab is defined by a YAML file in `labs/` that sets `lab_id`, `infra_backend`, `install_method`, and any per-lab overrides (see `labs/*.yml.sample` for examples).
+Each lab is defined by a YAML file in `labs/` that sets `lab_id`, `infra_backend`, `install_method`, and any per-lab overrides (see `labs/*.yml.sample` for examples).
+
+**TUI (interactive dashboard):**
+
+```bash
+./lab-manager-tui.sh
+```
+
+The TUI shows a live status table of all labs with current phase, progress, and task counters. Use arrow keys to select a lab, then press `d` to deploy, `t` to teardown, `r` to reset, or `x` to cancel a running action. The bottom panel streams the selected lab's Ansible log in real time (`Enter` to switch to highlighted lab, `l` to cycle). The TUI can attach to labs already running from the CLI.
+
+**CLI (headless):**
 
 ```bash
 # Deploy specific labs in parallel
-./manage-labs.sh deploy labs/openstack-appliance.yml labs/libvirt-ove.yml
+./lab-manager-cli.sh deploy labs/openstack-appliance.yml labs/libvirt-ove.yml
 
 # Teardown a single lab
-./manage-labs.sh teardown labs/libvirt-appliance.yml
+./lab-manager-cli.sh teardown labs/libvirt-appliance.yml
 
 # Deploy/teardown/reset all labs in labs/
-./manage-labs.sh deploy-all
-./manage-labs.sh teardown-all
-./manage-labs.sh reset-all
+./lab-manager-cli.sh deploy-all
+./lab-manager-cli.sh teardown-all
+./lab-manager-cli.sh reset-all
 ```
 
-Each lab runs as a background process. Logs are written to `logs/YYYYMMDD-HHMMSS/<lab-name>.log` and a summary is printed when all labs finish.
+Each lab runs as a background process. Logs are written to `logs/YYYYMMDD-HHMMSS/<lab-name>.log` and a summary is printed when all labs finish. Both the CLI and TUI write structured state to `.ove-demo-cache/tui/`, so you can start labs from the CLI and attach the TUI later to monitor progress.
 
 The `lab_id` variable (integer 0--55) isolates each lab's resources: credential cache, network address space, sushy port, and (for libvirt) OVS bridges, NAT networks, dnsmasq/sushy services, and MAC addresses. See [docs/infra-providers.md](docs/infra-providers.md) for details.
