@@ -1,0 +1,31 @@
+---
+# Configure the mgmt interface (second NIC) with a static IP.
+# The interface is identified by the fact that it is not the default-route interface.
+- name: Find bastion mgmt interface name
+  ansible.builtin.shell:
+    cmd: |
+      DEFAULT_DEV=$(ip route show default | awk 'NR==1{print $5}')
+      ip -br link | awk -v skip="lo $DEFAULT_DEV" '
+        BEGIN{n=split(skip,a); for(i in a) skip_dev[a[i]]=1}
+        !skip_dev[$1]{print $1; exit}
+      '
+  register: _bastion_mgmt_iface
+  changed_when: false
+
+- name: Set bastion mgmt interface IP statically via nmcli
+  community.general.nmcli:
+    conn_name: "System {{ _bastion_mgmt_iface.stdout }}"
+    ifname: "{{ _bastion_mgmt_iface.stdout }}"
+    type: ethernet
+    ip4: "{{ bastion_mgmt_ip }}/{{ mgmt_network_cidr.split('/')[1] }}"
+    gw4: ""
+    dns4: []
+    state: present
+  register: _mgmt_nmcli
+  failed_when: false
+
+- name: Bring up bastion mgmt interface
+  ansible.builtin.command:
+    cmd: nmcli con up "System {{ _bastion_mgmt_iface.stdout }}"
+  when: _mgmt_nmcli is changed
+  changed_when: true
