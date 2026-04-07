@@ -76,13 +76,15 @@
 # Play 2: Configure bastion host services (generates SSH key for cloud-user)
 - name: Configure bastion host
   hosts: ove_demo_bastion
-  gather_facts: true
+  gather_facts: false
   become: true
   pre_tasks:
     - name: Wait for bastion SSH to become available
       ansible.builtin.wait_for_connection:
         delay: 15
         timeout: 300
+    - name: Gather facts
+      ansible.builtin.setup:
   vars:
     os_auth_url: "{{ lookup('env', 'OS_AUTH_URL') | default(hostvars['localhost']['os_auth_url'] | default(''), true) }}"
     os_region: "{{ lookup('env', 'OS_REGION_NAME') | default(hostvars['localhost']['os_region'] | default('RegionOne'), true) }}"

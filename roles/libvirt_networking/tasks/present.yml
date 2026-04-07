@@ -73,7 +73,7 @@
 
 - name: Build mgmt DHCP host list from node IPs
   ansible.builtin.set_fact:
-    _mgmt_dhcp_hosts: "{{ _raw }}"
+    _mgmt_dhcp_hosts: "{{ _raw | from_json }}"
     bastion_mgmt_mac: "{{ mac_prefix }}:00:01"
   vars:
     _raw: >-

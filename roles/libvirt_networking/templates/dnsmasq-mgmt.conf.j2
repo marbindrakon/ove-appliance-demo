@@ -1,6 +1,7 @@
 # dnsmasq config for OVE mgmt network DHCP on {{ ovs_bridge_name }}
 interface={{ ovs_mgmt_port }}
-bind-interfaces
+bind-dynamic
+port=0
 no-resolv
 no-hosts
 
