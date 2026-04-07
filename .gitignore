@@ -7,3 +7,4 @@ appliance-assets/
 labs/*.yml
 logs/
 tests/*.yml
+__pycache__
