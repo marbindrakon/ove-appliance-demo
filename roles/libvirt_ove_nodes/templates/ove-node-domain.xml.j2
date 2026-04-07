@@ -32,7 +32,7 @@
       <source bridge='{{ ovs_bridge_name }}'/>
       <virtualport type='openvswitch'/>
       <mac address='{{ mac_prefix }}:01:{{ "%02x" | format(node_idx | int + 11) }}'/>
-      <target dev='ovenode{{ node_idx }}-t0'/>
+      <target dev='l{{ lab_id | default(0) }}-n{{ node_idx }}-t0'/>
       <model type='virtio'/>
     </interface>
     <!-- NIC 2: trunk1 on OVS -->
@@ -40,7 +40,7 @@
       <source bridge='{{ ovs_bridge_name }}'/>
       <virtualport type='openvswitch'/>
       <mac address='{{ mac_prefix }}:02:{{ "%02x" | format(node_idx | int + 11) }}'/>
-      <target dev='ovenode{{ node_idx }}-t1'/>
+      <target dev='l{{ lab_id | default(0) }}-n{{ node_idx }}-t1'/>
       <model type='virtio'/>
     </interface>
     <serial type='pty'>

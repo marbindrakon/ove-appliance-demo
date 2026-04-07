@@ -1,11 +1,11 @@
-# dnsmasq config for OVE mgmt network DHCP on br-ove
-interface=mgmt-host
+# dnsmasq config for OVE mgmt network DHCP on {{ ovs_bridge_name }}
+interface={{ ovs_mgmt_port }}
 bind-interfaces
 no-resolv
 no-hosts
 
 # DHCP range on mgmt network — only static assignments used; unknown MACs are ignored
-dhcp-range=10.10.0.10,10.10.0.200,255.255.255.0,infinite
+dhcp-range=10.10.{{ lab_id | default(0) }}.10,10.10.{{ lab_id | default(0) }}.200,255.255.255.0,infinite
 dhcp-ignore=tag:!known
 
 # Bastion static assignment

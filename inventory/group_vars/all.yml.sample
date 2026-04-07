@@ -40,7 +40,7 @@ rh_subscription_activation_key: ""  # Must be set by operator
 bastion_flavor: "g1.large"
 bastion_image: "rhel-9.5"
 bastion_disk_gb: 250
-bastion_mgmt_ip: "10.10.0.1"
+bastion_mgmt_ip: "10.10.{{ lab_id | default(0) }}.1"
 
 # OVE node VMs
 ove_node_flavor: "g1.4xlarge"
@@ -51,16 +51,16 @@ ove_node_disk_gb: 250
 ove_usb_volume_gb: 50
 # Management IPs for OVE nodes — one per node, reserved via fixed IP on trunk0 parent port
 ove_node_mgmt_ips:
-  - "10.10.0.11"
-  - "10.10.0.12"
-  - "10.10.0.13"
-  - "10.10.0.14"
+  - "10.10.{{ lab_id | default(0) }}.11"
+  - "10.10.{{ lab_id | default(0) }}.12"
+  - "10.10.{{ lab_id | default(0) }}.13"
+  - "10.10.{{ lab_id | default(0) }}.14"
 
 # OVE cluster DNS
 cluster_name: "ove"
 base_domain: "example.com"
-api_vip: "10.10.0.100"
-ingress_vip: "10.10.0.101"
+api_vip: "10.10.{{ lab_id | default(0) }}.100"
+ingress_vip: "10.10.{{ lab_id | default(0) }}.101"
 
 # External DNS forwarders — used by BIND on the bastion and pushed to the bastion mgmt
 # interface via per-port DHCP opts to override the subnet-level dns_nameservers (bastion_mgmt_ip).
@@ -104,8 +104,8 @@ appliance_kvm_host_image_path: ""
 
 # Networks
 bastion_network_cidr: "10.0.0.0/24"
-mgmt_network_cidr: "10.10.0.0/24"
-storage_network_cidr: "10.20.0.0/24"
+mgmt_network_cidr: "10.10.{{ lab_id | default(0) }}.0/24"
+storage_network_cidr: "10.20.{{ lab_id | default(0) }}.0/24"
 workload1_network_cidr: "192.168.10.0/24"
 workload2_network_cidr: "192.168.20.0/24"
 workload3_network_cidr: "192.168.30.0/24"
@@ -149,31 +149,22 @@ demo_networks:
 
 # --- libvirt backend settings (only used when infra_backend == "libvirt") ---
 
+# Lab identifier for multi-lab support (0-55). Each lab_id gets its own OVS bridge,
+# NAT network, dnsmasq, sushy instance, and IP address space on the same KVM host.
+lab_id: 0
+
 # KVM host connection
 kvm_host: ""              # Must be set by operator — IP or hostname of the KVM host
 kvm_host_user: "root"     # SSH user on KVM host
 kvm_host_ssh_key: ""      # Path to SSH private key for KVM host (optional, uses ssh-agent if empty)
 
-# libvirt storage
+# libvirt storage (shared across labs on the same KVM host)
 libvirt_pool_name: "ove-demo"
 libvirt_pool_path: "/var/lib/libvirt/images/ove-demo"
 
 # Bastion RHEL qcow2 image (path on KVM host)
 bastion_qcow2_image: ""   # Must be set by operator — e.g., /var/lib/libvirt/images/rhel-9.5.qcow2
 bastion_console_password: ""  # Optional — enables password login for cloud-user (console/emergency access)
-
-# Bastion NAT network (for external access via port forwarding)
-libvirt_nat_network_name: "ove-bastion-nat"
-libvirt_nat_network_cidr: "192.168.200.0/24"
-libvirt_nat_bastion_ip: "192.168.200.10"
-libvirt_nat_gateway_ip: "192.168.200.1"
-
-# OVS bridge
-ovs_bridge_name: "br-ove"
-kvm_host_mgmt_ip: "10.10.0.254"
-
-# SSH port forward from KVM host to bastion
-bastion_ssh_forward_port: 2222
 
 # Bastion VM sizing (replaces bastion_flavor for libvirt)
 bastion_vcpus: 4
@@ -186,5 +177,14 @@ ove_node_ram_mb: 65536
 # SSH public key content for cloud-init injection (libvirt mode)
 ssh_public_key: ""  # Must be set by operator — e.g., contents of ~/.ssh/id_ed25519.pub
 
-# MAC address prefix for deterministic assignment (last two octets are generated)
-mac_prefix: "52:54:00:10"
+# The following libvirt resources are auto-derived from lab_id in role defaults.
+# Override here only if you need non-standard values:
+#   ovs_bridge_name         — br-ove-{{ lab_id }}
+#   kvm_host_mgmt_ip        — 10.10.{{ lab_id }}.254
+#   mac_prefix              — 52:54:00:{{ lab_id hex }}
+#   libvirt_nat_network_name — ove-nat-{{ lab_id }}
+#   libvirt_nat_network_cidr — 192.168.{{ 200 + lab_id }}.0/24
+#   libvirt_nat_bastion_ip   — 192.168.{{ 200 + lab_id }}.10
+#   libvirt_nat_gateway_ip   — 192.168.{{ 200 + lab_id }}.1
+#   bastion_ssh_forward_port — {{ 2222 + lab_id }}
+#   sushy_port               — {{ 8000 + lab_id }}

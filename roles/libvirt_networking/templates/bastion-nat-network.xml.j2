@@ -1,7 +1,7 @@
 <network>
   <name>{{ libvirt_nat_network_name }}</name>
   <forward mode='nat'/>
-  <bridge name='virbr-ove' stp='on' delay='0'/>
+  <bridge name='{{ libvirt_nat_bridge_name }}' stp='on' delay='0'/>
   <ip address='{{ libvirt_nat_gateway_ip }}' netmask='255.255.255.0'>
     <dhcp>
       <host mac='{{ bastion_nat_mac }}' name='bastion' ip='{{ libvirt_nat_bastion_ip }}'/>

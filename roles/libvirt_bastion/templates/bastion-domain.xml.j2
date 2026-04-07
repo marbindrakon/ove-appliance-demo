@@ -36,7 +36,7 @@
       <source bridge='{{ ovs_bridge_name }}'/>
       <virtualport type='openvswitch'/>
       <mac address='{{ bastion_mgmt_mac }}'/>
-      <target dev='bastion-mgmt'/>
+      <target dev='{{ ovs_bastion_port }}'/>
       <model type='virtio'/>
     </interface>
     <serial type='file'>

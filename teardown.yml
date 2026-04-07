@@ -254,6 +254,10 @@
   hosts: kvm-host
   gather_facts: false
   become: true
+  vars_files:
+    - roles/kvm_host_prepare/defaults/main.yml
+    - roles/libvirt_networking/defaults/main.yml
+    - roles/kvm_sushy/defaults/main.yml
   tasks:
     # --- Stop and undefine OVE node VMs ---
     - name: Destroy OVE node VMs
@@ -298,18 +302,19 @@
       loop_control:
         label: "{{ item.path | basename }}"
 
-    - name: Delete appliance base images
+    - name: Delete appliance base images (only with destroy_shared)
       ansible.builtin.file:
         path: "{{ item }}"
         state: absent
       loop:
         - "{{ libvirt_pool_path }}/appliance-base.raw"
         - "{{ libvirt_pool_path }}/appliance-base.qcow2"
+      when: destroy_shared | default(false) | bool
 
     # --- Stop sushy-emulator ---
     - name: Stop and disable sushy-emulator
       ansible.builtin.systemd:
-        name: sushy-emulators
+        name: "{{ sushy_service_name }}"
         state: stopped
         enabled: false
       failed_when: false
@@ -319,14 +324,14 @@
         path: "{{ item }}"
         state: absent
       loop:
-        - /etc/systemd/system/sushy-emulators.service
-        - /root/sushy-emulators.conf
-        - /root/sushy-emulators.htpasswd
+        - "/etc/systemd/system/{{ sushy_service_name }}.service"
+        - "{{ sushy_config_path }}"
+        - "{{ sushy_htpasswd_path }}"
 
     # --- Stop dnsmasq for mgmt network ---
-    - name: Stop and disable dnsmasq-ove-mgmt
+    - name: Stop and disable dnsmasq
       ansible.builtin.systemd:
-        name: dnsmasq-ove-mgmt
+        name: "{{ dnsmasq_service_name }}"
         state: stopped
         enabled: false
       failed_when: false
@@ -336,8 +341,8 @@
         path: "{{ item }}"
         state: absent
       loop:
-        - /etc/dnsmasq-ove-mgmt.conf
-        - /etc/systemd/system/dnsmasq-ove-mgmt.service
+        - "{{ dnsmasq_config_path }}"
+        - "/etc/systemd/system/{{ dnsmasq_service_name }}.service"
 
     # --- Remove OVS bridge ---
     - name: Delete OVS bridge
@@ -381,20 +386,23 @@
         state: absent
       failed_when: false
 
-    # --- Remove storage pool ---
+    # --- Remove storage pool (shared across labs — only with destroy_shared) ---
     - name: Destroy storage pool
       ansible.builtin.command:
         cmd: virsh pool-destroy {{ libvirt_pool_name }}
       failed_when: false
       changed_when: true
+      when: destroy_shared | default(false) | bool
 
     - name: Undefine storage pool
       ansible.builtin.command:
         cmd: virsh pool-undefine {{ libvirt_pool_name }}
       failed_when: false
       changed_when: true
+      when: destroy_shared | default(false) | bool
 
     - name: Remove storage pool directory
       ansible.builtin.file:
         path: "{{ libvirt_pool_path }}"
         state: absent
+      when: destroy_shared | default(false) | bool

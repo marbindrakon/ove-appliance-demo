@@ -1,16 +1,25 @@
 ---
-ovs_bridge_name: "br-ove"
-kvm_host_mgmt_ip: "10.10.0.254"
+# All names derived from lab_id for multi-lab isolation on a single KVM host.
+# lab_id must be set in inventory (0-55). Role defaults provide safe fallbacks.
+ovs_bridge_name: "br-ove-{{ lab_id | default(0) }}"
+ovs_mgmt_port: "l{{ lab_id | default(0) }}-mgmt"
+kvm_host_mgmt_ip: "10.10.{{ lab_id | default(0) }}.254"
 mgmt_vlan_id: 10
 
-libvirt_nat_network_name: "ove-bastion-nat"
-libvirt_nat_network_cidr: "192.168.200.0/24"
-libvirt_nat_gateway_ip: "192.168.200.1"
-libvirt_nat_bastion_ip: "192.168.200.10"
-mac_prefix: "52:54:00:10"
-bastion_nat_mac: "52:54:00:10:00:10"
+libvirt_nat_network_name: "ove-nat-{{ lab_id | default(0) }}"
+libvirt_nat_network_cidr: "192.168.{{ 200 + lab_id | default(0) | int }}.0/24"
+libvirt_nat_gateway_ip: "192.168.{{ 200 + lab_id | default(0) | int }}.1"
+libvirt_nat_bastion_ip: "192.168.{{ 200 + lab_id | default(0) | int }}.10"
+libvirt_nat_bridge_name: "virbr-ove-{{ lab_id | default(0) }}"
+mac_prefix: "52:54:00:{{ '%02x' | format(lab_id | default(0) | int) }}"
+bastion_nat_mac: "52:54:00:00:{{ '%02x' | format(lab_id | default(0) | int) }}:10"
 
-bastion_ssh_forward_port: 2222
+bastion_ssh_forward_port: "{{ 2222 + lab_id | default(0) | int }}"
+
+# Derived service/path names for dnsmasq
+dnsmasq_service_name: "dnsmasq-ove-{{ lab_id | default(0) }}-mgmt"
+dnsmasq_config_path: "/etc/dnsmasq-ove-{{ lab_id | default(0) }}-mgmt.conf"
+dnsmasq_pid_path: "/run/dnsmasq-ove-{{ lab_id | default(0) }}-mgmt.pid"
 
 # MAC-to-IP mappings for mgmt DHCP (generated from ove_node_mgmt_ips)
 # Format: list of {mac, ip} dicts — populated by tasks

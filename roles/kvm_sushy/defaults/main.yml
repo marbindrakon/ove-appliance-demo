@@ -1,3 +1,6 @@
 ---
-sushy_port: 8000
+sushy_port: "{{ 8000 + lab_id | default(0) | int }}"
 sushy_username: "sushy"
+sushy_service_name: "sushy-ove-{{ lab_id | default(0) }}"
+sushy_config_path: "/root/sushy-ove-{{ lab_id | default(0) }}.conf"
+sushy_htpasswd_path: "/root/sushy-ove-{{ lab_id | default(0) }}.htpasswd"

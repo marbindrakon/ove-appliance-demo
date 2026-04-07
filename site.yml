@@ -172,7 +172,7 @@
       ansible.builtin.command:
         cmd: >
           scp -o StrictHostKeyChecking=no
-          cloud-user@{{ libvirt_nat_bastion_ip | default('192.168.200.10') }}:{{ appliance_assets_dir | default('/root/appliance-assets') }}/appliance.raw
+          cloud-user@{{ libvirt_nat_bastion_ip }}:{{ appliance_assets_dir | default('/root/appliance-assets') }}/appliance.raw
           {{ libvirt_pool_path | default('/var/lib/libvirt/images/ove-demo') }}/appliance-base.raw
       when:
         - install_method | default('ove') == 'appliance'

@@ -9,7 +9,7 @@
 
 - name: Wait for OVS ports to appear
   ansible.builtin.command:
-    cmd: ovs-vsctl port-to-br ovenode{{ item[0] }}-t{{ item[1] }}
+    cmd: ovs-vsctl port-to-br l{{ lab_id | default(0) }}-n{{ item[0] }}-t{{ item[1] }}
   loop: "{{ range(0, ove_node_count | int) | product([0, 1]) | list }}"
   register: port_check
   until: port_check.rc == 0
@@ -20,7 +20,7 @@
 - name: Configure OVS trunk ports with native-untagged VLAN mode
   ansible.builtin.command:
     cmd: >
-      ovs-vsctl set port ovenode{{ item[0] }}-t{{ item[1] }}
+      ovs-vsctl set port l{{ lab_id | default(0) }}-n{{ item[0] }}-t{{ item[1] }}
       vlan_mode=native-untagged
       tag={{ mgmt_vlan_id }}
       trunks={{ mgmt_vlan_id }},{{ storage_vlan_id }},{{ workload1_vlan_id }},{{ workload2_vlan_id }},{{ workload3_vlan_id }}

@@ -1,4 +1,13 @@
 ---
+# --- Validate lab_id ---
+
+- name: Validate lab_id range
+  ansible.builtin.assert:
+    that:
+      - lab_id | default(0) | int >= 0
+      - lab_id | default(0) | int <= 55
+    fail_msg: "lab_id must be 0-55 (NAT CIDR constraint: 192.168.{{ 200 + lab_id | default(0) | int }}.0/24)"
+
 # --- OVS bridge for all OVE demo traffic ---
 
 - name: Create OVS bridge
@@ -9,25 +18,25 @@
 - name: Create OVS internal port for KVM host mgmt access
   openvswitch.openvswitch.openvswitch_port:
     bridge: "{{ ovs_bridge_name }}"
-    port: mgmt-host
+    port: "{{ ovs_mgmt_port }}"
     tag: "{{ mgmt_vlan_id }}"
     state: present
-    set: "Interface mgmt-host type=internal"
+    set: "Interface {{ ovs_mgmt_port }} type=internal"
 
 - name: Assign IP to mgmt-host interface
   ansible.builtin.command:
-    cmd: ip addr replace {{ kvm_host_mgmt_ip }}/24 dev mgmt-host
+    cmd: ip addr replace {{ kvm_host_mgmt_ip }}/24 dev {{ ovs_mgmt_port }}
   changed_when: true
 
 - name: Bring up mgmt-host interface
   ansible.builtin.command:
-    cmd: ip link set mgmt-host up
+    cmd: ip link set {{ ovs_mgmt_port }} up
   changed_when: true
 
 - name: Make mgmt-host IP persistent via nmcli
   community.general.nmcli:
-    conn_name: mgmt-host
-    ifname: mgmt-host
+    conn_name: "{{ ovs_mgmt_port }}"
+    ifname: "{{ ovs_mgmt_port }}"
     type: ovs-interface
     ip4: "{{ kvm_host_mgmt_ip }}/24"
     state: present
@@ -89,20 +98,20 @@
 - name: Template dnsmasq config for mgmt network
   ansible.builtin.template:
     src: dnsmasq-mgmt.conf.j2
-    dest: /etc/dnsmasq-ove-mgmt.conf
+    dest: "{{ dnsmasq_config_path }}"
     mode: "0644"
-  notify: restart dnsmasq-ove-mgmt
+  notify: restart dnsmasq-lab
 
 - name: Template dnsmasq systemd unit
   ansible.builtin.template:
     src: dnsmasq-mgmt.service.j2
-    dest: /etc/systemd/system/dnsmasq-ove-mgmt.service
+    dest: "/etc/systemd/system/{{ dnsmasq_service_name }}.service"
     mode: "0644"
-  notify: restart dnsmasq-ove-mgmt
+  notify: restart dnsmasq-lab
 
 - name: Enable and start dnsmasq for mgmt network
   ansible.builtin.systemd:
-    name: dnsmasq-ove-mgmt
+    name: "{{ dnsmasq_service_name }}"
     state: started
     enabled: true
     daemon_reload: true
@@ -112,7 +121,7 @@
 - name: Allow sushy-emulator port on mgmt-host
   ansible.builtin.iptables:
     chain: INPUT
-    in_interface: mgmt-host
+    in_interface: "{{ ovs_mgmt_port }}"
     protocol: tcp
     destination_port: "{{ sushy_port }}"
     jump: ACCEPT
