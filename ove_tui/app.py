@@ -280,7 +280,7 @@ class OveLabManager(App):
         yield DataTable(id="lab-table", cursor_type="row")
         yield ConfirmBar(id="confirm-bar")
         yield Static("", id="log-header")
-        yield RichLog(id="log-view", highlight=True, markup=True, wrap=True, max_lines=2000)
+        yield RichLog(id="log-view", highlight=True, markup=False, wrap=True, max_lines=2000)
         yield Footer()
 
     def on_mount(self) -> None:
