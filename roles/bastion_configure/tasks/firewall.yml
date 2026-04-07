@@ -49,4 +49,4 @@
     permanent: true
     immediate: true
     state: enabled
-  when: infra_backend | default('openstack') == 'openstack'
+  when: infra_backend == 'openstack'

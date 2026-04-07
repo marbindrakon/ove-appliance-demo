@@ -2,3 +2,5 @@
 # Defaults inherited from group_vars/all.yml:
 #   project_name, bastion_flavor, bastion_image, bastion_disk_gb,
 #   bastion_mgmt_ip, external_network, ssh_key_name, cloud_name
+
+state: present

@@ -1,11 +1,17 @@
 ---
-- name: Create OVE nodes (agent ISO method)
-  ansible.builtin.include_tasks: create_ove_nodes.yml
-  when: install_method | default('ove') == 'ove'
+- name: Validate state parameter
+  ansible.builtin.assert:
+    that: state in ['present', 'absent', 'reset']
+    fail_msg: "libvirt_ove_nodes: unsupported state '{{ state }}' — expected present, absent, or reset"
 
-- name: Create appliance nodes (factory imaging method)
-  ansible.builtin.include_tasks: create_appliance_nodes.yml
-  when: install_method | default('ove') == 'appliance'
+- name: Create OVE nodes
+  ansible.builtin.include_tasks: present.yml
+  when: state == 'present'
 
-- name: Configure OVS trunk ports for all nodes
-  ansible.builtin.include_tasks: configure_ovs_trunks.yml
+- name: Destroy OVE nodes
+  ansible.builtin.include_tasks: absent.yml
+  when: state == 'absent'
+
+- name: Reset OVE nodes
+  ansible.builtin.include_tasks: reset.yml
+  when: state == 'reset'

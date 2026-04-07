@@ -1,0 +1,17 @@
+---
+# absent.yml — Remove sushy-emulator from KVM host
+- name: Stop and disable sushy-emulator
+  ansible.builtin.systemd:
+    name: "{{ sushy_service_name }}"
+    state: stopped
+    enabled: false
+  failed_when: false
+
+- name: Remove sushy-emulator files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/etc/systemd/system/{{ sushy_service_name }}.service"
+    - "{{ sushy_config_path }}"
+    - "{{ sushy_htpasswd_path }}"

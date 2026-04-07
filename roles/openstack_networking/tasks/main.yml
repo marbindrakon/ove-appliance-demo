@@ -1,28 +1,13 @@
 ---
-- name: Create demo networks
-  openstack.cloud.network:
-    cloud: "{{ demo_cloud_name }}"
-    name: "{{ item.name }}"
-    port_security_enabled: "{{ item.port_security_enabled }}"
-    state: present
-  loop: "{{ demo_networks }}"
+- name: Validate state parameter
+  ansible.builtin.assert:
+    that: state in ['present', 'absent']
+    fail_msg: "openstack_networking: unsupported state '{{ state }}' — expected present or absent"
 
-- name: Create demo subnets
-  openstack.cloud.subnet:
-    cloud: "{{ demo_cloud_name }}"
-    name: "{{ item.name }}-subnet"
-    network_name: "{{ item.name }}"
-    cidr: "{{ item.cidr }}"
-    enable_dhcp: "{{ item.enable_dhcp }}"
-    dns_nameservers: "{{ item.dns_nameservers | default(omit) }}"
-    state: present
-  loop: "{{ demo_networks }}"
+- name: Create OpenStack networking
+  ansible.builtin.include_tasks: present.yml
+  when: state == 'present'
 
-- name: Create router
-  openstack.cloud.router:
-    cloud: "{{ demo_cloud_name }}"
-    name: "{{ project_name }}-router"
-    network: "{{ external_network }}"
-    interfaces:
-      - "{{ project_name }}-bastion-subnet"
-    state: present
+- name: Delete OpenStack networking
+  ansible.builtin.include_tasks: absent.yml
+  when: state == 'absent'

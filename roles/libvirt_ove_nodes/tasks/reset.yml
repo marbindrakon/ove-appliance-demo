@@ -1,0 +1,59 @@
+---
+# reset.yml — Reset OVE nodes for fresh OCP installation
+#
+# OVE mode:      Recreate blank boot disks
+# Appliance mode: Recreate thin boot disks from base image
+
+- name: Destroy OVE node VMs
+  community.libvirt.virt:
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
+    state: destroyed
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  failed_when: false
+
+# --- OVE mode: recreate blank boot disks ---
+- name: Delete existing boot disks (OVE mode)
+  ansible.builtin.file:
+    path: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2"
+    state: absent
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  when: install_method == 'ove'
+
+- name: Recreate blank boot disks (OVE mode)
+  ansible.builtin.command:
+    cmd: >
+      qemu-img create -f qcow2
+      {{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2
+      {{ ove_node_disk_gb }}G
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  changed_when: true
+  when: install_method == 'ove'
+
+# --- Appliance mode: recreate thin boot disks from base image ---
+- name: Delete existing boot disks (appliance mode)
+  ansible.builtin.file:
+    path: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2"
+    state: absent
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  when: install_method == 'appliance'
+
+- name: Recreate thin boot disks from appliance base image (appliance mode)
+  ansible.builtin.command:
+    cmd: >
+      qemu-img create -f qcow2
+      -b {{ libvirt_pool_path }}/appliance-base.qcow2
+      -F qcow2
+      {{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2
+  changed_when: true
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  when: install_method == 'appliance'
+
+# --- Start VMs and reconfigure OVS ---
+- name: Start OVE node VMs
+  community.libvirt.virt:
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
+    state: running
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+
+- name: Reconfigure OVS trunk ports
+  ansible.builtin.include_tasks: configure_ovs_trunks.yml

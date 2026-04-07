@@ -1,238 +1,76 @@
 # teardown.yml — Destroy all OVE demo resources
 ---
-# --- OpenStack teardown ---
+# Validate inputs
+- name: Validate inputs
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Validate inputs
+      ansible.builtin.include_tasks: tasks/validate_inputs.yml
+
+# --- OpenStack teardown (reverse dependency order) ---
 - name: Tear down OVE demo environment (OpenStack)
   hosts: localhost
   connection: local
   gather_facts: false
+  environment:
+    OS_CLIENT_CONFIG_FILE: "{{ cache_dir }}/clouds.yaml"
   pre_tasks:
-    - name: Ensure local cache directory exists
-      ansible.builtin.file:
-        path: ".ove-demo-cache"
-        state: directory
-        mode: '0700'
-  tasks:
     - name: Skip OpenStack teardown for libvirt backend
       ansible.builtin.meta: end_play
-      when: infra_backend | default('openstack') == 'libvirt'
+      when: infra_backend == 'libvirt'
 
-    # --- Find clouds.yaml early (needed for cleanup at end) ---
-    - name: Find clouds.yaml path
+    - name: Ensure local cache directory exists
+      ansible.builtin.file:
+        path: "{{ cache_dir }}"
+        state: directory
+        mode: '0700'
+
+    # Ensure lab-local clouds.yaml exists for API auth during teardown.
+    # If the cache was deleted, recreate from system config + demo entries.
+    - name: Check if lab-local clouds.yaml exists
+      ansible.builtin.stat:
+        path: "{{ cache_dir }}/clouds.yaml"
+      register: _lab_clouds_yaml
+
+    - name: Find system clouds.yaml path
       ansible.builtin.stat:
         path: "{{ item }}"
       loop:
         - "{{ lookup('env', 'HOME') }}/.config/openstack/clouds.yaml"
         - "/etc/openstack/clouds.yaml"
-      register: clouds_yaml_stat
+      register: _system_clouds_yaml
+      when: not _lab_clouds_yaml.stat.exists
 
-    - name: Set clouds.yaml path fact
-      ansible.builtin.set_fact:
-        clouds_yaml_path: "{{ (clouds_yaml_stat.results | selectattr('stat.exists') | first).item }}"
-
-    - name: Read clouds.yaml for setup
-      ansible.builtin.slurp:
-        src: "{{ clouds_yaml_path }}"
-      register: clouds_yaml_raw
-      no_log: "{{ not debug_mode | default(false) | bool }}"
-
-    - name: Ensure demo project cloud entry exists in clouds.yaml
+    - name: Recreate lab-local clouds.yaml with demo entries for teardown
       vars:
-        _existing: "{{ clouds_yaml_raw.content | b64decode | from_yaml }}"
+        _system_path: "{{ (_system_clouds_yaml.results | selectattr('stat.exists') | first).item }}"
+        _existing: "{{ lookup('file', _system_path) | from_yaml }}"
         _demo_auth: "{{ _existing.clouds[cloud_name].auth | combine({'project_name': project_name, 'project_domain_name': project_domain}) }}"
         _demo_cloud: "{{ _existing.clouds[cloud_name] | combine({'auth': _demo_auth}) }}"
         _updated: "{{ _existing | combine({'clouds': {project_name: _demo_cloud}}, recursive=True) }}"
       ansible.builtin.copy:
         content: "{{ _updated | to_nice_yaml(indent=2) }}"
-        dest: "{{ clouds_yaml_path }}"
+        dest: "{{ cache_dir }}/clouds.yaml"
         mode: '0600'
+      when: not _lab_clouds_yaml.stat.exists
       no_log: "{{ not debug_mode | default(false) | bool }}"
 
-    # --- Delete OVE node VMs and volumes ---
-    - name: Delete OVE node VMs
-      openstack.cloud.server:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
-        state: absent
-      loop: "{{ range(0, ove_node_count | int) | list }}"
+  roles:
+    - role: ove_nodes
+      state: absent
+    - role: appliance_image
+      state: absent
+      when: install_method == 'appliance'
+    - role: bastion_vm
+      state: absent
+    - role: openstack_networking
+      state: absent
+    - role: openstack_project
+      state: absent
 
-    - name: Delete OVE node boot volumes
-      openstack.cloud.volume:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-volume"
-        state: absent
-      loop: "{{ range(0, ove_node_count | int) | list }}"
-
-    - name: Delete OVE node USB volumes
-      openstack.cloud.volume:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-usb"
-        state: absent
-      loop: "{{ range(0, ove_node_count | int) | list }}"
-      when: install_method | default('ove') == 'ove'
-
-    - name: Delete appliance node CD-ROM volumes
-      openstack.cloud.volume:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-cdrom"
-        state: absent
-      loop: "{{ range(0, ove_node_count | int) | list }}"
-      when: install_method | default('ove') == 'appliance'
-
-    - name: Delete OVE agent ISO Glance image
-      openstack.cloud.image:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ ove_agent_iso_path | basename }}"
-        state: absent
-      failed_when: false
-      when:
-        - install_method | default('ove') == 'ove'
-        - ove_agent_glance_image | default('') | length == 0
-
-    - name: Delete appliance Glance image
-      openstack.cloud.image:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ appliance_image_name | default('openshift-appliance') }}"
-        state: absent
-      failed_when: false
-      when:
-        - install_method | default('ove') == 'appliance'
-        - appliance_glance_image | default('') | length == 0
-
-    # --- Delete OVE node trunk ports ---
-    - name: Delete OVE node trunks
-      openstack.cloud.trunk:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item[0] }}-trunk{{ item[1] }}"
-        state: absent
-      loop: "{{ range(0, ove_node_count | int) | product([0, 1]) | list }}"
-      failed_when: false
-
-    - name: Delete OVE node sub-ports
-      openstack.cloud.port:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item[0] }}-trunk{{ item[1] }}-vlan{{ item[2] }}"
-        state: absent
-      loop: >-
-        {{ range(0, ove_node_count | int)
-           | product([0, 1])
-           | product([storage_vlan_id, workload1_vlan_id, workload2_vlan_id, workload3_vlan_id])
-           | map('flatten')
-           | list }}
-
-    - name: Delete OVE node parent ports
-      openstack.cloud.port:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item[0] }}-trunk{{ item[1] }}-parent"
-        state: absent
-      loop: "{{ range(0, ove_node_count | int) | product([0, 1]) | list }}"
-
-    # --- Delete bastion VM ---
-    - name: Release bastion floating IP
-      openstack.cloud.floating_ip:
-        cloud: "{{ demo_cloud_name }}"
-        server: "{{ project_name }}-bastion"
-        network: "{{ external_network }}"
-        state: absent
-      failed_when: false
-
-    - name: Delete bastion VM
-      openstack.cloud.server:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ project_name }}-bastion"
-        state: absent
-
-    - name: Delete bastion boot volume
-      openstack.cloud.volume:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ project_name }}-bastion-volume"
-        state: absent
-
-    - name: Delete bastion ports
-      openstack.cloud.port:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ item }}"
-        state: absent
-      loop:
-        - "{{ project_name }}-bastion-port"
-        - "{{ project_name }}-bastion-mgmt-port"
-
-    # --- Delete router and networks ---
-    - name: Delete router
-      openstack.cloud.router:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ project_name }}-router"
-        state: absent
-
-    - name: Delete subnets
-      openstack.cloud.subnet:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ item.name }}-subnet"
-        state: absent
-      loop: "{{ demo_networks }}"
-
-    - name: Delete networks
-      openstack.cloud.network:
-        cloud: "{{ demo_cloud_name }}"
-        name: "{{ item.name }}"
-        state: absent
-      loop: "{{ demo_networks }}"
-
-    # --- Delete credentials and project (admin operations) ---
-    - name: Delete application credential for sushy user
-      openstack.cloud.application_credential:
-        auth:
-          auth_url: "{{ os_auth_url }}"
-          username: "{{ project_name }}-sushy"
-          password: "{{ sushy_password }}"
-          project_name: "{{ project_name }}"
-          user_domain_name: "{{ project_domain }}"
-          project_domain_name: "{{ project_domain }}"
-        auth_type: password
-        name: "{{ project_name }}-sushy-credential"
-        state: absent
-      failed_when: false
-      no_log: "{{ not debug_mode | default(false) | bool }}"
-
-    - name: Delete sushy service user
-      openstack.cloud.identity_user:
-        cloud: "{{ cloud_name }}"
-        name: "{{ project_name }}-sushy"
-        domain: "{{ project_domain }}"
-        state: absent
-      failed_when: false
-
-    - name: Delete demo project
-      openstack.cloud.project:
-        cloud: "{{ cloud_name }}"
-        name: "{{ project_name }}"
-        domain_id: "{{ project_domain }}"
-        state: absent
-
-    # --- Remove demo cloud entry from clouds.yaml ---
-    - name: Read clouds.yaml for cleanup
-      ansible.builtin.slurp:
-        src: "{{ clouds_yaml_path }}"
-      register: clouds_yaml_final
-      no_log: "{{ not debug_mode | default(false) | bool }}"
-
-    - name: Remove demo cloud entry from clouds.yaml
-      vars:
-        _existing: "{{ clouds_yaml_final.content | b64decode | from_yaml }}"
-        _updated_clouds: "{{ _existing.clouds | dict2items | rejectattr('key', 'equalto', project_name) | items2dict }}"
-        _updated: "{{ _existing | combine({'clouds': _updated_clouds}) }}"
-      ansible.builtin.copy:
-        content: "{{ _updated | to_nice_yaml(indent=2) }}"
-        dest: "{{ clouds_yaml_path }}"
-        mode: '0600'
-      no_log: "{{ not debug_mode | default(false) | bool }}"
-
-    # --- Clean up local credential cache ---
-    - name: Remove local credential cache
-      ansible.builtin.file:
-        path: ".ove-demo-cache"
-        state: absent
-
-# --- libvirt teardown ---
+# --- libvirt teardown (reverse dependency order) ---
 - name: Add KVM host to inventory (libvirt teardown)
   hosts: localhost
   connection: local
@@ -240,169 +78,23 @@
   tasks:
     - name: Skip for OpenStack backend
       ansible.builtin.meta: end_play
-      when: infra_backend | default('openstack') == 'openstack'
+      when: infra_backend == 'openstack'
 
     - name: Add KVM host to inventory
-      ansible.builtin.add_host:
-        name: kvm-host
-        groups: kvm_hosts
-        ansible_host: "{{ kvm_host }}"
-        ansible_user: "{{ kvm_host_user }}"
-        ansible_ssh_private_key_file: "{{ kvm_host_ssh_key | default(omit) }}"
+      ansible.builtin.include_tasks: tasks/add_kvm_host.yml
 
 - name: Tear down OVE demo environment (libvirt)
   hosts: kvm-host
   gather_facts: false
   become: true
-  vars_files:
-    - roles/kvm_host_prepare/defaults/main.yml
-    - roles/libvirt_networking/defaults/main.yml
-    - roles/kvm_sushy/defaults/main.yml
-  tasks:
-    # --- Stop and undefine OVE node VMs ---
-    - name: Destroy OVE node VMs
-      community.libvirt.virt:
-        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
-        state: destroyed
-      loop: "{{ range(0, ove_node_count | int) | list }}"
-      failed_when: false
-
-    - name: Undefine OVE node VMs
-      ansible.builtin.command:
-        cmd: virsh undefine --nvram {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
-      loop: "{{ range(0, ove_node_count | int) | list }}"
-      failed_when: false
-      changed_when: true
-
-    # --- Stop and undefine bastion VM ---
-    - name: Destroy bastion VM
-      community.libvirt.virt:
-        name: "{{ project_name }}-bastion"
-        state: destroyed
-      failed_when: false
-
-    - name: Undefine bastion VM
-      ansible.builtin.command:
-        cmd: virsh undefine --nvram {{ project_name }}-bastion
-      failed_when: false
-      changed_when: true
-
-    # --- Delete disk images ---
-    - name: Find all demo disk images in storage pool
-      ansible.builtin.find:
-        paths: "{{ libvirt_pool_path }}"
-        patterns: "{{ project_name }}-*"
-      register: demo_disk_files
-
-    - name: Delete demo disk images
-      ansible.builtin.file:
-        path: "{{ item.path }}"
-        state: absent
-      loop: "{{ demo_disk_files.files }}"
-      loop_control:
-        label: "{{ item.path | basename }}"
-
-    - name: Delete appliance base images (only with destroy_shared)
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - "{{ libvirt_pool_path }}/appliance-base.raw"
-        - "{{ libvirt_pool_path }}/appliance-base.qcow2"
-      when: destroy_shared | default(false) | bool
-
-    # --- Stop sushy-emulator ---
-    - name: Stop and disable sushy-emulator
-      ansible.builtin.systemd:
-        name: "{{ sushy_service_name }}"
-        state: stopped
-        enabled: false
-      failed_when: false
-
-    - name: Remove sushy-emulator files
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - "/etc/systemd/system/{{ sushy_service_name }}.service"
-        - "{{ sushy_config_path }}"
-        - "{{ sushy_htpasswd_path }}"
-
-    # --- Stop dnsmasq for mgmt network ---
-    - name: Stop and disable dnsmasq
-      ansible.builtin.systemd:
-        name: "{{ dnsmasq_service_name }}"
-        state: stopped
-        enabled: false
-      failed_when: false
-
-    - name: Remove dnsmasq config and service
-      ansible.builtin.file:
-        path: "{{ item }}"
-        state: absent
-      loop:
-        - "{{ dnsmasq_config_path }}"
-        - "/etc/systemd/system/{{ dnsmasq_service_name }}.service"
-
-    # --- Remove OVS bridge ---
-    - name: Delete OVS bridge
-      openvswitch.openvswitch.openvswitch_bridge:
-        bridge: "{{ ovs_bridge_name }}"
-        state: absent
-      failed_when: false
-
-    # --- Remove NAT network ---
-    - name: Destroy NAT network
-      community.libvirt.virt_net:
-        name: "{{ libvirt_nat_network_name }}"
-        state: inactive
-      failed_when: false
-
-    - name: Undefine NAT network
-      community.libvirt.virt_net:
-        name: "{{ libvirt_nat_network_name }}"
-        state: absent
-      failed_when: false
-
-    # --- Remove iptables rules ---
-    - name: Remove iptables DNAT rule for bastion SSH
-      ansible.builtin.iptables:
-        table: nat
-        chain: PREROUTING
-        protocol: tcp
-        destination_port: "{{ bastion_ssh_forward_port }}"
-        jump: DNAT
-        to_destination: "{{ libvirt_nat_bastion_ip }}:22"
-        state: absent
-      failed_when: false
-
-    - name: Remove iptables FORWARD rule for bastion SSH
-      ansible.builtin.iptables:
-        chain: FORWARD
-        protocol: tcp
-        destination: "{{ libvirt_nat_bastion_ip }}"
-        destination_port: "22"
-        jump: ACCEPT
-        state: absent
-      failed_when: false
-
-    # --- Remove storage pool (shared across labs — only with destroy_shared) ---
-    - name: Destroy storage pool
-      ansible.builtin.command:
-        cmd: virsh pool-destroy {{ libvirt_pool_name }}
-      failed_when: false
-      changed_when: true
-      when: destroy_shared | default(false) | bool
-
-    - name: Undefine storage pool
-      ansible.builtin.command:
-        cmd: virsh pool-undefine {{ libvirt_pool_name }}
-      failed_when: false
-      changed_when: true
-      when: destroy_shared | default(false) | bool
-
-    - name: Remove storage pool directory
-      ansible.builtin.file:
-        path: "{{ libvirt_pool_path }}"
-        state: absent
-      when: destroy_shared | default(false) | bool
+  roles:
+    - role: libvirt_ove_nodes
+      state: absent
+    - role: kvm_sushy
+      state: absent
+    - role: libvirt_bastion
+      state: absent
+    - role: libvirt_networking
+      state: absent
+    - role: kvm_host_prepare
+      state: absent

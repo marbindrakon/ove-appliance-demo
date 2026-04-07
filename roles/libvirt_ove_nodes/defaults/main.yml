@@ -1,18 +1,7 @@
 ---
-libvirt_pool_path: "/var/lib/libvirt/images/ove-demo"
-ovs_bridge_name: "br-ove-{{ lab_id | default(0) }}"
-mac_prefix: "52:54:00:{{ '%02x' | format(lab_id | default(0) | int) }}"
-ove_node_vcpus: 16
-ove_node_ram_mb: 65536
-ove_node_disk_gb: 250
-ove_node_name_prefix: "ove-node"
-
-# VLAN IDs for OVS trunk ports
-mgmt_vlan_id: 10
-storage_vlan_id: 20
-workload1_vlan_id: 30
-workload2_vlan_id: 40
-workload3_vlan_id: 50
-
+# Role-specific variables (all others defined in inventory/group_vars/all.yml)
 # Appliance image location on KVM host (set by pre_tasks or appliance_image role)
 appliance_image_on_kvm: "{{ libvirt_pool_path }}/appliance-base.raw"
+
+# Role state
+state: present

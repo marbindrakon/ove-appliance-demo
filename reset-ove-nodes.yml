@@ -8,93 +8,26 @@
 #              nodes to factory state ready for a new configuration ISO.
 #
 # The bastion and all networking are left untouched.
-#
-# Run from the Ansible controller:
-#   ansible-playbook reset-ove-nodes.yml -i inventory/
 
-# --- OpenStack reset ---
-- name: Reset OVE nodes for fresh OCP installation (OpenStack)
+# Validate inputs
+- name: Validate inputs
   hosts: localhost
   connection: local
   gather_facts: false
   tasks:
-    - name: Skip OpenStack reset for libvirt backend
-      ansible.builtin.meta: end_play
-      when: infra_backend | default('openstack') == 'libvirt'
+    - name: Validate inputs
+      ansible.builtin.include_tasks: tasks/validate_inputs.yml
 
-    # --- OVE mode: rebuild root volumes with blank image ---
-    - name: Gather blank image info
-      openstack.cloud.image_info:
-        cloud: "{{ demo_cloud_name }}"
-        image: "{{ sushy_blank_image }}"
-      register: blank_image_facts
-      when: install_method | default('ove') == 'ove'
-
-    - name: Fail if blank image not found
-      ansible.builtin.fail:
-        msg: "Blank image '{{ sushy_blank_image }}' not found in Glance"
-      when:
-        - install_method | default('ove') == 'ove'
-        - blank_image_facts.images | length == 0
-
-    - name: Rebuild OVE node root volumes with blank image
-      ansible.builtin.command:
-        cmd: >
-          openstack --os-cloud {{ demo_cloud_name }} server rebuild
-          {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
-          --reimage-boot-volume
-          --image {{ blank_image_facts.images[0].id }}
-      loop: "{{ range(0, ove_node_count | int) | list }}"
-      changed_when: true
-      when: install_method | default('ove') == 'ove'
-
-    # --- Appliance mode: rebuild boot volumes with appliance image ---
-    - name: Gather appliance image info
-      openstack.cloud.image_info:
-        cloud: "{{ demo_cloud_name }}"
-        image: "{{ appliance_glance_image | default(appliance_image_name) }}"
-      register: appliance_image_facts
-      when: install_method | default('ove') == 'appliance'
-
-    - name: Fail if appliance image not found
-      ansible.builtin.fail:
-        msg: "Appliance image '{{ appliance_glance_image | default(appliance_image_name) }}' not found in Glance"
-      when:
-        - install_method | default('ove') == 'appliance'
-        - appliance_image_facts.images | length == 0
-
-    - name: Rebuild appliance node boot volumes with appliance image
-      ansible.builtin.command:
-        cmd: >
-          openstack --os-cloud {{ demo_cloud_name }} server rebuild
-          {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
-          --reimage-boot-volume
-          --image {{ appliance_image_facts.images[0].id }}
-      loop: "{{ range(0, ove_node_count | int) | list }}"
-      changed_when: true
-      when: install_method | default('ove') == 'appliance'
-
-    # --- Wait for VMs regardless of mode ---
-    - name: Wait for OVE node VMs to reach ACTIVE state after rebuild
-      ansible.builtin.command:
-        cmd: >
-          openstack --os-cloud {{ demo_cloud_name }} server show
-          {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
-          -f value -c status
-      loop: "{{ range(0, ove_node_count | int) | list }}"
-      register: server_status
-      until: server_status.stdout in ['ACTIVE', 'ERROR']
-      retries: 30
-      delay: 30
-      changed_when: false
-
-    - name: Fail if any VM entered ERROR state during rebuild
-      ansible.builtin.fail:
-        msg: "OVE node {{ item.item }} is in ERROR state after rebuild"
-      when: item.stdout == 'ERROR'
-      loop: "{{ server_status.results }}"
-      loop_control:
-        label: "{{ item.item }}"
+# --- OpenStack reset ---
+- name: Reset OVE nodes (OpenStack)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  roles:
+    - role: ove_nodes
+      vars:
+        state: reset
+      when: infra_backend == 'openstack'
 
 # --- libvirt reset ---
 - name: Add KVM host to inventory (libvirt reset)
@@ -104,91 +37,16 @@
   tasks:
     - name: Skip for OpenStack backend
       ansible.builtin.meta: end_play
-      when: infra_backend | default('openstack') == 'openstack'
+      when: infra_backend == 'openstack'
 
     - name: Add KVM host to inventory
-      ansible.builtin.add_host:
-        name: kvm-host
-        groups: kvm_hosts
-        ansible_host: "{{ kvm_host }}"
-        ansible_user: "{{ kvm_host_user }}"
-        ansible_ssh_private_key_file: "{{ kvm_host_ssh_key | default(omit) }}"
+      ansible.builtin.include_tasks: tasks/add_kvm_host.yml
 
-- name: Reset OVE nodes for fresh OCP installation (libvirt)
+- name: Reset OVE nodes (libvirt)
   hosts: kvm-host
   gather_facts: false
   become: true
-  vars_files:
-    - roles/kvm_host_prepare/defaults/main.yml
-  tasks:
-    # --- Stop all OVE node VMs ---
-    - name: Destroy OVE node VMs
-      community.libvirt.virt:
-        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
-        state: destroyed
-      loop: "{{ range(0, ove_node_count | int) | list }}"
-      failed_when: false
-
-    # --- OVE mode: recreate blank boot disks ---
-    - name: Delete existing boot disks (OVE mode)
-      ansible.builtin.file:
-        path: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2"
-        state: absent
-      loop: "{{ range(0, ove_node_count | int) | list }}"
-      when: install_method | default('ove') == 'ove'
-
-    - name: Recreate blank boot disks (OVE mode)
-      ansible.builtin.command:
-        cmd: >
-          qemu-img create -f qcow2
-          {{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2
-          {{ ove_node_disk_gb }}G
-      loop: "{{ range(0, ove_node_count | int) | list }}"
-      changed_when: true
-      when: install_method | default('ove') == 'ove'
-
-    # --- Appliance mode: recreate thin boot disks from base image ---
-    - name: Delete existing boot disks (appliance mode)
-      ansible.builtin.file:
-        path: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2"
-        state: absent
-      loop: "{{ range(0, ove_node_count | int) | list }}"
-      when: install_method | default('ove') == 'appliance'
-
-    - name: Recreate thin boot disks from appliance base image (appliance mode)
-      ansible.builtin.command:
-        cmd: >
-          qemu-img create -f qcow2
-          -b {{ libvirt_pool_path }}/appliance-base.qcow2
-          -F qcow2
-          {{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2
-      changed_when: true
-      loop: "{{ range(0, ove_node_count | int) | list }}"
-      when: install_method | default('ove') == 'appliance'
-
-    # --- Start VMs and reconfigure OVS ---
-    - name: Start OVE node VMs
-      community.libvirt.virt:
-        name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
-        state: running
-      loop: "{{ range(0, ove_node_count | int) | list }}"
-
-    - name: Wait for OVS ports to appear
-      ansible.builtin.command:
-        cmd: ovs-vsctl port-to-br l{{ lab_id | default(0) }}-n{{ item[0] }}-t{{ item[1] }}
-      loop: "{{ range(0, ove_node_count | int) | product([0, 1]) | list }}"
-      register: port_check
-      until: port_check.rc == 0
-      retries: 10
-      delay: 2
-      changed_when: false
-
-    - name: Reconfigure OVS trunk ports
-      ansible.builtin.command:
-        cmd: >
-          ovs-vsctl set port l{{ lab_id | default(0) }}-n{{ item[0] }}-t{{ item[1] }}
-          vlan_mode=native-untagged
-          tag={{ mgmt_vlan_id }}
-          trunks={{ mgmt_vlan_id }},{{ storage_vlan_id }},{{ workload1_vlan_id }},{{ workload2_vlan_id }},{{ workload3_vlan_id }}
-      loop: "{{ range(0, ove_node_count | int) | product([0, 1]) | list }}"
-      changed_when: true
+  roles:
+    - role: libvirt_ove_nodes
+      vars:
+        state: reset

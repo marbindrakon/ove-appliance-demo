@@ -1,0 +1,76 @@
+---
+# reset.yml — Reset OVE nodes for fresh OCP installation (OpenStack)
+
+# --- OVE mode: rebuild root volumes with blank image ---
+- name: Gather blank image info
+  openstack.cloud.image_info:
+    cloud: "{{ demo_cloud_name }}"
+    image: "{{ sushy_blank_image }}"
+  register: blank_image_facts
+  when: install_method == 'ove'
+
+- name: Fail if blank image not found
+  ansible.builtin.fail:
+    msg: "Blank image '{{ sushy_blank_image }}' not found in Glance"
+  when:
+    - install_method == 'ove'
+    - blank_image_facts.images | length == 0
+
+- name: Rebuild OVE node root volumes with blank image
+  ansible.builtin.command:
+    cmd: >
+      openstack --os-cloud {{ demo_cloud_name }} server rebuild
+      {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
+      --reimage-boot-volume
+      --image {{ blank_image_facts.images[0].id }}
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  changed_when: true
+  when: install_method == 'ove'
+
+# --- Appliance mode: rebuild boot volumes with appliance image ---
+- name: Gather appliance image info
+  openstack.cloud.image_info:
+    cloud: "{{ demo_cloud_name }}"
+    image: "{{ appliance_glance_image | default(appliance_image_name) }}"
+  register: appliance_image_facts
+  when: install_method == 'appliance'
+
+- name: Fail if appliance image not found
+  ansible.builtin.fail:
+    msg: "Appliance image '{{ appliance_glance_image | default(appliance_image_name) }}' not found in Glance"
+  when:
+    - install_method == 'appliance'
+    - appliance_image_facts.images | length == 0
+
+- name: Rebuild appliance node boot volumes with appliance image
+  ansible.builtin.command:
+    cmd: >
+      openstack --os-cloud {{ demo_cloud_name }} server rebuild
+      {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
+      --reimage-boot-volume
+      --image {{ appliance_image_facts.images[0].id }}
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  changed_when: true
+  when: install_method == 'appliance'
+
+# --- Wait for VMs regardless of mode ---
+- name: Wait for OVE node VMs to reach ACTIVE state after rebuild
+  ansible.builtin.command:
+    cmd: >
+      openstack --os-cloud {{ demo_cloud_name }} server show
+      {{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}
+      -f value -c status
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  register: server_status
+  until: server_status.stdout in ['ACTIVE', 'ERROR']
+  retries: 30
+  delay: 30
+  changed_when: false
+
+- name: Fail if any VM entered ERROR state during rebuild
+  ansible.builtin.fail:
+    msg: "OVE node {{ item.item }} is in ERROR state after rebuild"
+  when: item.stdout == 'ERROR'
+  loop: "{{ server_status.results }}"
+  loop_control:
+    label: "{{ item.item }}"

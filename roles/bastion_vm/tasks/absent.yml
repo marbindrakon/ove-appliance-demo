@@ -1,0 +1,31 @@
+---
+# absent.yml — Delete bastion VM and associated OpenStack resources
+
+- name: Release bastion floating IP
+  openstack.cloud.floating_ip:
+    cloud: "{{ demo_cloud_name }}"
+    server: "{{ project_name }}-bastion"
+    network: "{{ external_network }}"
+    state: absent
+  failed_when: false
+
+- name: Delete bastion VM
+  openstack.cloud.server:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-bastion"
+    state: absent
+
+- name: Delete bastion boot volume
+  openstack.cloud.volume:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-bastion-volume"
+    state: absent
+
+- name: Delete bastion ports
+  openstack.cloud.port:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ project_name }}-bastion-port"
+    - "{{ project_name }}-bastion-mgmt-port"

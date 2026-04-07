@@ -1,0 +1,67 @@
+---
+- name: Check if bastion domain already exists
+  community.libvirt.virt:
+    name: "{{ project_name }}-bastion"
+    command: info
+  register: bastion_domain_info
+  failed_when: false
+
+- name: Create bastion VM
+  when: "project_name ~ '-bastion' not in (bastion_domain_info | default({}))"
+  block:
+    - name: Create empty bastion boot disk at target size
+      ansible.builtin.command:
+        cmd: >
+          qemu-img create -f qcow2
+          {{ libvirt_pool_path }}/{{ project_name }}-bastion-boot.qcow2
+          {{ bastion_disk_gb }}G
+      changed_when: true
+
+    - name: Copy and expand root partition into bastion boot disk
+      ansible.builtin.command:
+        cmd: >
+          virt-resize --expand /dev/sda4
+          {{ bastion_qcow2_image }}
+          {{ libvirt_pool_path }}/{{ project_name }}-bastion-boot.qcow2
+      changed_when: true
+
+    - name: Inject SSH key, sudo, and remove cloud-init from bastion disk
+      ansible.builtin.command:
+        cmd: >
+          virt-customize -a {{ libvirt_pool_path }}/{{ project_name }}-bastion-boot.qcow2
+          --run-command 'id cloud-user || useradd -m -s /bin/bash cloud-user'
+          --ssh-inject 'cloud-user:string:{{ ssh_public_key }}'
+          --run-command 'echo "cloud-user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/cloud-user'
+          --run-command 'chmod 440 /etc/sudoers.d/cloud-user'
+          {{ ("--password 'cloud-user:password:" + bastion_console_password + "'") if bastion_console_password else "" }}
+          --uninstall cloud-init
+      no_log: "{{ not debug_mode | default(false) | bool }}"
+      changed_when: true
+
+    - name: Define bastion domain
+      community.libvirt.virt:
+        command: define
+        xml: "{{ lookup('template', 'bastion-domain.xml.j2') }}"
+
+- name: Start bastion VM
+  community.libvirt.virt:
+    name: "{{ project_name }}-bastion"
+    state: running
+
+- name: Set bastion mgmt OVS port as access port on mgmt VLAN
+  ansible.builtin.command:
+    cmd: ovs-vsctl set port {{ ovs_bastion_port }} tag={{ mgmt_vlan_id }}
+  changed_when: true
+
+- name: Add bastion to in-memory inventory
+  ansible.builtin.add_host:
+    name: "{{ project_name }}-bastion"
+    groups: ove_demo_bastion
+    ansible_host: "{{ libvirt_nat_bastion_ip }}"
+    ansible_user: cloud-user
+    ansible_ssh_private_key_file: "{{ bastion_ssh_private_key | default('~/.ssh/id_ed25519') }}"
+    ansible_ssh_common_args: >-
+      -o StrictHostKeyChecking=no
+      -o ProxyCommand="ssh -i {{ kvm_host_ssh_key }} -o StrictHostKeyChecking=no -W %h:%p {{ kvm_host_user }}@{{ kvm_host }}"
+  delegate_to: localhost
+  become: false

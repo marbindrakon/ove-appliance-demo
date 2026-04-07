@@ -1,0 +1,51 @@
+---
+# Shared input validation — included by site.yml, teardown.yml, reset-ove-nodes.yml
+
+- name: Validate infra_backend value
+  ansible.builtin.assert:
+    that: infra_backend in ['openstack', 'libvirt']
+    fail_msg: "infra_backend must be 'openstack' or 'libvirt', got '{{ infra_backend }}'"
+
+- name: Validate install_method value
+  ansible.builtin.assert:
+    that: install_method in ['ove', 'appliance']
+    fail_msg: "install_method must be 'ove' or 'appliance', got '{{ install_method }}'"
+
+- name: Validate OpenStack required variables
+  ansible.builtin.assert:
+    that:
+      - cloud_name | length > 0
+      - ssh_key_name | length > 0
+      - os_auth_url | length > 0
+    fail_msg: "OpenStack backend requires cloud_name, ssh_key_name, and os_auth_url"
+  when: infra_backend == 'openstack'
+
+- name: Validate libvirt required variables
+  ansible.builtin.assert:
+    that:
+      - kvm_host | length > 0
+      - ssh_public_key | length > 0
+      - bastion_qcow2_image | length > 0
+    fail_msg: "libvirt backend requires kvm_host, ssh_public_key, and bastion_qcow2_image"
+  when: infra_backend == 'libvirt'
+
+- name: Validate lab_id range
+  ansible.builtin.assert:
+    that:
+      - lab_id | int >= 0
+      - lab_id | int <= 55
+    fail_msg: "lab_id must be 0-55, got {{ lab_id }}"
+
+- name: Validate subscription variables
+  ansible.builtin.assert:
+    that:
+      - rh_subscription_org | length > 0
+      - rh_subscription_activation_key | length > 0
+    fail_msg: "CDN/Satellite subscription requires rh_subscription_org and rh_subscription_activation_key"
+  when: subscription_type in ['cdn', 'satellite']
+
+- name: Validate appliance pull_secret
+  ansible.builtin.assert:
+    that: pull_secret | length > 0
+    fail_msg: "Appliance mode requires pull_secret from console.redhat.com"
+  when: install_method == 'appliance'

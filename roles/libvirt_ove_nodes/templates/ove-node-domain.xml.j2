@@ -18,7 +18,7 @@
       <target dev='vda' bus='virtio'/>
       <boot order='1'/>
     </disk>
-{% if install_method | default('ove') == 'ove' %}
+{% if install_method == 'ove' %}
     <!-- USB volume: agent ISO -->
     <disk type='file' device='disk'>
       <driver name='qemu' type='raw'/>

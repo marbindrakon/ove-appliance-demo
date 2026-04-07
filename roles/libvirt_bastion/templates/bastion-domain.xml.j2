@@ -18,13 +18,6 @@
       <source file='{{ libvirt_pool_path }}/{{ project_name }}-bastion-boot.qcow2'/>
       <target dev='vda' bus='virtio'/>
     </disk>
-    <!-- Cloud-init config drive -->
-    <disk type='file' device='cdrom'>
-      <driver name='qemu' type='raw'/>
-      <source file='{{ libvirt_pool_path }}/{{ project_name }}-bastion-cidata.iso'/>
-      <target dev='sda' bus='sata'/>
-      <readonly/>
-    </disk>
     <!-- NIC 1: NAT network for external access -->
     <interface type='network'>
       <source network='{{ libvirt_nat_network_name }}'/>

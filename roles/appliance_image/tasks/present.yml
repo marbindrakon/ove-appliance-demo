@@ -1,0 +1,76 @@
+---
+- name: Check if appliance image already exists in Glance
+  openstack.cloud.image_info:
+    cloud: "{{ demo_cloud_name }}-sushy"
+    image: "{{ appliance_image_name }}"
+  register: appliance_image_info
+  when: infra_backend == 'openstack'
+
+- name: Check if appliance image already exists on disk
+  ansible.builtin.stat:
+    path: "{{ appliance_assets_dir }}/appliance.raw"
+  register: appliance_image_file
+  when: infra_backend == 'libvirt'
+
+- name: Set appliance exists flag
+  ansible.builtin.set_fact:
+    _appliance_already_exists: >-
+      {{ (infra_backend == 'openstack' and
+          (appliance_image_info.images | default([])) | length > 0) or
+         (infra_backend == 'libvirt' and
+          (appliance_image_file.stat.exists | default(false))) }}
+
+- name: Read cloud-user SSH public key
+  ansible.builtin.slurp:
+    src: /home/cloud-user/.ssh/id_ed25519.pub
+  register: bastion_ssh_key_raw
+
+- name: Set SSH public key fact
+  ansible.builtin.set_fact:
+    bastion_ssh_public_key: "{{ bastion_ssh_key_raw.content | b64decode | trim }}"
+
+- name: Build and upload appliance image
+  when: not _appliance_already_exists | bool
+  block:
+    - name: Create appliance assets directory
+      ansible.builtin.file:
+        path: "{{ appliance_assets_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Template appliance-config.yaml
+      ansible.builtin.template:
+        src: appliance-config.yaml.j2
+        dest: "{{ appliance_assets_dir }}/appliance-config.yaml"
+        mode: "0644"
+      no_log: "{{ not debug_mode | default(false) | bool }}"
+
+    - name: Build appliance disk image
+      ansible.builtin.command:
+        cmd: >
+          podman run --rm --privileged --net=host
+          --name appliance-builder
+          -v {{ appliance_assets_dir }}:/assets:Z
+          {{ appliance_container_image }}
+          build
+      changed_when: true
+
+    - name: Make appliance image readable for transfer
+      ansible.builtin.file:
+        path: "{{ appliance_assets_dir }}/appliance.raw"
+        mode: "0644"
+
+    - name: Upload appliance image to Glance
+      openstack.cloud.image:
+        cloud: "{{ demo_cloud_name }}-sushy"
+        name: "{{ appliance_image_name }}"
+        filename: "{{ appliance_assets_dir }}/appliance.raw"
+        disk_format: raw
+        container_format: bare
+        state: present
+      when: infra_backend == 'openstack'
+
+- name: Appliance image already exists
+  ansible.builtin.debug:
+    msg: "Appliance image already exists, skipping build"
+  when: _appliance_already_exists | bool

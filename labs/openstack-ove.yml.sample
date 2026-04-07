@@ -1,0 +1,6 @@
+---
+infra_backend: "openstack"
+install_method: "ove"
+lab_id: 1
+ove_node_count: 4
+# ove_agent_glance_image: "agent-ove.x86_64.iso"  # Use existing Glance image

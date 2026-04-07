@@ -1,0 +1,6 @@
+---
+infra_backend: "libvirt"
+install_method: "ove"
+lab_id: 11
+ove_node_count: 4
+# ove_kvm_host_iso_path: "/root/agent-ove.x86_64.iso"

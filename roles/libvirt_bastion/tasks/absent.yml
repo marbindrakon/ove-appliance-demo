@@ -1,0 +1,28 @@
+---
+# absent.yml — Destroy and undefine bastion VM, clean up disk images
+
+- name: Destroy bastion VM
+  community.libvirt.virt:
+    name: "{{ project_name }}-bastion"
+    state: destroyed
+  failed_when: false
+
+- name: Undefine bastion VM
+  ansible.builtin.command:
+    cmd: virsh undefine --nvram {{ project_name }}-bastion
+  failed_when: false
+  changed_when: true
+
+- name: Find bastion disk images
+  ansible.builtin.find:
+    paths: "{{ libvirt_pool_path }}"
+    patterns: "{{ project_name }}-bastion-*"
+  register: bastion_disk_files
+
+- name: Delete bastion disk images
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ bastion_disk_files.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"

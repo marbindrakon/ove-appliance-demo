@@ -1,90 +1,13 @@
 ---
-- name: Create bastion port on bastion network
-  openstack.cloud.port:
-    cloud: "{{ demo_cloud_name }}"
-    name: "{{ project_name }}-bastion-port"
-    network: "{{ project_name }}-bastion"
-    security_groups:
-      - "{{ default_sg_id }}"
-    state: present
-  register: bastion_port
-
-- name: Create bastion port on management network
-  openstack.cloud.port:
-    cloud: "{{ demo_cloud_name }}"
-    name: "{{ project_name }}-bastion-mgmt-port"
-    network: "{{ project_name }}-mgmt"
-    fixed_ips:
-      - ip_address: "{{ bastion_mgmt_ip }}"
-    port_security_enabled: false
-    # Override subnet-level dns_nameservers (bastion_mgmt_ip) so the bastion uses
-    # external resolvers on this interface rather than itself (BIND isn't running yet
-    # when subscription and package installs happen).
-    extra_dhcp_opts:
-      - opt_name: "dns-nameservers"
-        opt_value: "{{ dns_forwarders | join(',') }}"
-    state: present
-  register: bastion_mgmt_port
-
-- name: Create bastion boot volume
-  openstack.cloud.volume:
-    cloud: "{{ demo_cloud_name }}"
-    name: "{{ project_name }}-bastion-volume"
-    image: "{{ bastion_image }}"
-    size: "{{ bastion_disk_gb }}"
-    state: present
-  register: bastion_volume
+- name: Validate state parameter
+  ansible.builtin.assert:
+    that: state in ['present', 'absent']
+    fail_msg: "bastion_vm: unsupported state '{{ state }}' — expected present or absent"
 
 - name: Create bastion VM
-  openstack.cloud.server:
-    cloud: "{{ demo_cloud_name }}"
-    name: "{{ project_name }}-bastion"
-    flavor: "{{ bastion_flavor }}"
-    boot_volume: "{{ bastion_volume.volume.id }}"
-    key_name: "{{ ssh_key_name }}"
-    auto_ip: false
-    nics:
-      - port-id: "{{ bastion_port.port.id }}"
-      - port-id: "{{ bastion_mgmt_port.port.id }}"
-    meta:
-      role: bastion
-    state: present
-  register: bastion_server
+  ansible.builtin.include_tasks: present.yml
+  when: state == 'present'
 
-# openstack.cloud.server resets port SGs on attach — reapply after VM creation
-- name: Reapply security group to bastion port
-  openstack.cloud.port:
-    cloud: "{{ demo_cloud_name }}"
-    name: "{{ project_name }}-bastion-port"
-    network: "{{ project_name }}-bastion"
-    security_groups:
-      - "{{ default_sg_id }}"
-    state: present
-
-- name: Assign floating IP to bastion
-  openstack.cloud.floating_ip:
-    cloud: "{{ demo_cloud_name }}"
-    server: "{{ project_name }}-bastion"
-    network: "{{ external_network }}"
-    nat_destination: "{{ project_name }}-bastion"
-    state: present
-  register: bastion_fip
-
-- name: Store bastion FIP for later use
-  ansible.builtin.set_fact:
-    bastion_floating_ip: "{{ bastion_fip.floating_ip.floating_ip_address }}"
-    cacheable: true
-
-- name: Add bastion to in-memory inventory
-  ansible.builtin.add_host:
-    name: "{{ project_name }}-bastion"
-    groups: ove_demo_bastion
-    ansible_host: "{{ bastion_fip.floating_ip.floating_ip_address }}"
-    ansible_user: cloud-user
-
-- name: Wait for bastion SSH to become available
-  ansible.builtin.wait_for:
-    host: "{{ bastion_floating_ip }}"
-    port: 22
-    delay: 10
-    timeout: 300
+- name: Delete bastion VM
+  ansible.builtin.include_tasks: absent.yml
+  when: state == 'absent'

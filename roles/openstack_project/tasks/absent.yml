@@ -1,0 +1,38 @@
+---
+# absent.yml — Delete OpenStack project, credentials, and local cache
+
+- name: Delete application credential for sushy user
+  openstack.cloud.application_credential:
+    auth:
+      auth_url: "{{ os_auth_url }}"
+      username: "{{ project_name }}-sushy"
+      password: "{{ sushy_password }}"
+      project_name: "{{ project_name }}"
+      user_domain_name: "{{ project_domain }}"
+      project_domain_name: "{{ project_domain }}"
+    auth_type: password
+    name: "{{ project_name }}-sushy-credential"
+    state: absent
+  failed_when: false
+  no_log: "{{ not debug_mode | default(false) | bool }}"
+
+- name: Delete sushy service user
+  openstack.cloud.identity_user:
+    cloud: "{{ cloud_name }}"
+    name: "{{ project_name }}-sushy"
+    domain: "{{ project_domain }}"
+    state: absent
+  failed_when: false
+
+- name: Delete demo project
+  openstack.cloud.project:
+    cloud: "{{ cloud_name }}"
+    name: "{{ project_name }}"
+    domain_id: "{{ project_domain }}"
+    state: absent
+
+# --- Clean up local credential cache and lab-local clouds.yaml ---
+- name: Remove local credential cache
+  ansible.builtin.file:
+    path: "{{ cache_dir }}"
+    state: absent

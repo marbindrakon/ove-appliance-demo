@@ -1,11 +1,7 @@
 ---
-libvirt_pool_path: "/var/lib/libvirt/images/ove-demo"
-mac_prefix: "52:54:00:{{ '%02x' | format(lab_id | default(0) | int) }}"
+# Role-specific variables (all others defined in inventory/group_vars/all.yml)
+state: present
 bastion_vcpus: 4
 bastion_ram_mb: 8192
 bastion_disk_gb: 250
-bastion_nat_mac: "52:54:00:00:{{ '%02x' | format(lab_id | default(0) | int) }}:10"
 bastion_console_password: ""  # Set to enable password login on the bastion console (for emergency access)
-bastion_mgmt_mac: "{{ mac_prefix }}:00:01"
-bastion_mgmt_ip: "10.10.{{ lab_id | default(0) }}.1"
-ovs_bastion_port: "l{{ lab_id | default(0) }}-bst"

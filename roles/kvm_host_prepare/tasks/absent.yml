@@ -1,0 +1,21 @@
+---
+# absent.yml — Remove libvirt storage pool (only with destroy_shared)
+- name: Destroy storage pool
+  ansible.builtin.command:
+    cmd: virsh pool-destroy {{ libvirt_pool_name }}
+  failed_when: false
+  changed_when: true
+  when: destroy_shared | default(false) | bool
+
+- name: Undefine storage pool
+  ansible.builtin.command:
+    cmd: virsh pool-undefine {{ libvirt_pool_name }}
+  failed_when: false
+  changed_when: true
+  when: destroy_shared | default(false) | bool
+
+- name: Remove storage pool directory
+  ansible.builtin.file:
+    path: "{{ libvirt_pool_path }}"
+    state: absent
+  when: destroy_shared | default(false) | bool

@@ -1,0 +1,11 @@
+---
+# absent.yml — Delete appliance Glance image (OpenStack only)
+- name: Delete appliance Glance image
+  openstack.cloud.image:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ appliance_image_name }}"
+    state: absent
+  failed_when: false
+  when:
+    - infra_backend == 'openstack'
+    - appliance_glance_image | default('') | length == 0

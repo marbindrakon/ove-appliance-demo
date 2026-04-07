@@ -1,3 +1,5 @@
 ---
 # demo_networks is defined in inventory/group_vars/all.yml so it is available
 # to both site.yml and teardown.yml without relying on role defaults.
+
+state: present

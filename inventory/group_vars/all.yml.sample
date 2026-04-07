@@ -8,6 +8,12 @@ infra_backend: "openstack"
 # Install method — "ove" for agent ISO boot, "appliance" for factory disk image
 install_method: "ove"
 
+# Lab identifier (0-55). Namespaces credential cache, sushy port, and IP address
+# scheme. For libvirt, also namespaces OVS bridges, NAT networks, and services.
+# Multiple labs can run in parallel on the same controller/KVM host.
+lab_id: 0
+cache_dir: ".ove-demo-cache/lab-{{ lab_id }}"
+
 # OpenStack connection (only used when infra_backend == "openstack")
 cloud_name: "lab-infra"  # Must be set by operator — matches a cloud in clouds.yaml
 demo_cloud_name: "{{ project_name }}"  # Auto-created cloud entry scoped to demo project
@@ -16,12 +22,12 @@ demo_cloud_name: "{{ project_name }}"  # Auto-created cloud entry scoped to demo
 external_network: "ext-net"
 
 # Project
-project_name: "ove-demo-{{ lookup('password', '.ove-demo-cache/project-suffix chars=ascii_lowercase,digits length=5') }}"
+project_name: "ove-demo-{{ lookup('password', cache_dir + '/project-suffix chars=ascii_lowercase,digits length=5') }}"
 project_domain: "Default"
 
 # Sushy service user
 sushy_username: "sushy"
-sushy_password: "{{ lookup('password', '.ove-demo-cache/sushy-password chars=ascii_letters,digits length=24') }}"
+sushy_password: "{{ lookup('password', cache_dir + '/sushy-password chars=ascii_letters,digits length=24') }}"
 
 # SSH key
 ssh_key_name: ""  # Must be set by operator
@@ -70,7 +76,7 @@ dns_forwarders:
 
 # Sushy emulator
 sushy_blank_image: "sushy-tools-blank-image"
-sushy_port: 8000
+sushy_port: "{{ 8000 + lab_id | default(0) | int }}"
 
 # OVE agent ISO path on the Ansible controller (only used when install_method == "ove")
 ove_agent_iso_path: "{{ playbook_dir }}/agent-ove.x86_64.iso"
@@ -149,10 +155,6 @@ demo_networks:
 
 # --- libvirt backend settings (only used when infra_backend == "libvirt") ---
 
-# Lab identifier for multi-lab support (0-55). Each lab_id gets its own OVS bridge,
-# NAT network, dnsmasq, sushy instance, and IP address space on the same KVM host.
-lab_id: 0
-
 # KVM host connection
 kvm_host: ""              # Must be set by operator — IP or hostname of the KVM host
 kvm_host_user: "root"     # SSH user on KVM host
@@ -177,14 +179,31 @@ ove_node_ram_mb: 65536
 # SSH public key content for cloud-init injection (libvirt mode)
 ssh_public_key: ""  # Must be set by operator — e.g., contents of ~/.ssh/id_ed25519.pub
 
-# The following libvirt resources are auto-derived from lab_id in role defaults.
-# Override here only if you need non-standard values:
-#   ovs_bridge_name         — br-ove-{{ lab_id }}
-#   kvm_host_mgmt_ip        — 10.10.{{ lab_id }}.254
-#   mac_prefix              — 52:54:00:{{ lab_id hex }}
-#   libvirt_nat_network_name — ove-nat-{{ lab_id }}
-#   libvirt_nat_network_cidr — 192.168.{{ 200 + lab_id }}.0/24
-#   libvirt_nat_bastion_ip   — 192.168.{{ 200 + lab_id }}.10
-#   libvirt_nat_gateway_ip   — 192.168.{{ 200 + lab_id }}.1
-#   bastion_ssh_forward_port — {{ 2222 + lab_id }}
-#   sushy_port               — {{ 8000 + lab_id }}
+# Auto-derived libvirt network and MAC address resources (based on lab_id)
+ovs_bridge_name: "br-ove-{{ lab_id }}"
+ovs_mgmt_port: "l{{ lab_id }}-mgmt"
+ovs_bastion_port: "l{{ lab_id }}-bst"
+kvm_host_mgmt_ip: "10.10.{{ lab_id }}.254"
+mac_prefix: "52:54:00:{{ '%02x' | format(lab_id | int) }}"
+bastion_mgmt_mac: "{{ mac_prefix }}:00:01"
+bastion_nat_mac: "52:54:00:00:{{ '%02x' | format(lab_id | int) }}:10"
+
+# Auto-derived libvirt NAT network resources
+libvirt_nat_network_name: "ove-nat-{{ lab_id }}"
+libvirt_nat_network_cidr: "192.168.{{ 200 + lab_id | int }}.0/24"
+libvirt_nat_gateway_ip: "192.168.{{ 200 + lab_id | int }}.1"
+libvirt_nat_bastion_ip: "192.168.{{ 200 + lab_id | int }}.10"
+libvirt_nat_bridge_name: "virbr-ove-{{ lab_id }}"
+
+# SSH forwarding port for bastion access via KVM host
+bastion_ssh_forward_port: "{{ 2222 + lab_id | int }}"
+
+# Auto-derived service/path names for dnsmasq (mgmt network DHCP)
+dnsmasq_service_name: "dnsmasq-ove-{{ lab_id }}-mgmt"
+dnsmasq_config_path: "/etc/dnsmasq-ove-{{ lab_id }}-mgmt.conf"
+dnsmasq_pid_path: "/run/dnsmasq-ove-{{ lab_id }}-mgmt.pid"
+
+# Auto-derived service/path names for sushy-emulator (libvirt backend)
+sushy_service_name: "sushy-ove-{{ lab_id }}"
+sushy_config_path: "/root/sushy-ove-{{ lab_id }}.conf"
+sushy_htpasswd_path: "/root/sushy-ove-{{ lab_id }}.htpasswd"

@@ -1,0 +1,35 @@
+---
+# absent.yml — Remove libvirt networking resources
+
+- name: Stop and disable dnsmasq
+  ansible.builtin.systemd:
+    name: "{{ dnsmasq_service_name }}"
+    state: stopped
+    enabled: false
+  failed_when: false
+
+- name: Remove dnsmasq config and service
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ dnsmasq_config_path }}"
+    - "/etc/systemd/system/{{ dnsmasq_service_name }}.service"
+
+- name: Destroy NAT network
+  community.libvirt.virt_net:
+    name: "{{ libvirt_nat_network_name }}"
+    state: inactive
+  failed_when: false
+
+- name: Undefine NAT network
+  community.libvirt.virt_net:
+    name: "{{ libvirt_nat_network_name }}"
+    state: absent
+  failed_when: false
+
+- name: Delete OVS bridge
+  openvswitch.openvswitch.openvswitch_bridge:
+    bridge: "{{ ovs_bridge_name }}"
+    state: absent
+  failed_when: false

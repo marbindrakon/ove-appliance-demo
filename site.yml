@@ -1,5 +1,14 @@
 # site.yml — OVE Appliance Demo Environment Orchestrator
 ---
+# Validate inputs
+- name: Validate inputs
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: Validate inputs
+      ansible.builtin.include_tasks: tasks/validate_inputs.yml
+
 # Play 1: Create OpenStack infrastructure (project, networks, bastion VM)
 - name: Create OVE demo infrastructure (OpenStack)
   hosts: localhost
@@ -8,25 +17,48 @@
   pre_tasks:
     - name: Ensure local cache directory exists
       ansible.builtin.file:
-        path: ".ove-demo-cache"
+        path: "{{ cache_dir }}"
         state: directory
         mode: '0700'
+
+    # Initialize lab-local clouds.yaml from system config so each lab has
+    # its own copy and parallel OpenStack labs don't collide on writes.
+    - name: Find system clouds.yaml path
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ lookup('env', 'HOME') }}/.config/openstack/clouds.yaml"
+        - "/etc/openstack/clouds.yaml"
+      register: _system_clouds_yaml
+      when: infra_backend == 'openstack'
+
+    - name: Initialize lab-local clouds.yaml from system config
+      ansible.builtin.copy:
+        src: "{{ (_system_clouds_yaml.results | selectattr('stat.exists') | first).item }}"
+        dest: "{{ cache_dir }}/clouds.yaml"
+        mode: '0600'
+        force: false
+      when: infra_backend == 'openstack'
+      no_log: "{{ not debug_mode | default(false) | bool }}"
   roles:
     - role: openstack_project
-      when: infra_backend | default('openstack') == 'openstack'
+      tags: [infra, openstack]
+      when: infra_backend == 'openstack'
+      environment:
+        OS_CLIENT_CONFIG_FILE: "{{ cache_dir }}/clouds.yaml"
     - role: openstack_networking
-      when: infra_backend | default('openstack') == 'openstack'
+      tags: [infra, networking, openstack]
+      when: infra_backend == 'openstack'
+      environment:
+        OS_CLIENT_CONFIG_FILE: "{{ cache_dir }}/clouds.yaml"
     - role: bastion_vm
-      when: infra_backend | default('openstack') == 'openstack'
+      tags: [infra, bastion, openstack]
+      when: infra_backend == 'openstack'
+      environment:
+        OS_CLIENT_CONFIG_FILE: "{{ cache_dir }}/clouds.yaml"
   tasks:
     - name: Add KVM host to inventory
-      ansible.builtin.add_host:
-        name: kvm-host
-        groups: kvm_hosts
-        ansible_host: "{{ kvm_host }}"
-        ansible_user: "{{ kvm_host_user }}"
-        ansible_ssh_private_key_file: "{{ kvm_host_ssh_key | default(omit) }}"
-      when: infra_backend | default('openstack') == 'libvirt'
+      ansible.builtin.include_tasks: tasks/add_kvm_host.yml
 
 # Play 1b: Prepare KVM host and create bastion VM (libvirt only)
 - name: Prepare KVM host and create bastion VM (libvirt)
@@ -34,9 +66,12 @@
   gather_facts: true
   become: true
   roles:
-    - kvm_host_prepare
-    - libvirt_networking
-    - libvirt_bastion
+    - role: kvm_host_prepare
+      tags: [infra, libvirt]
+    - role: libvirt_networking
+      tags: [infra, networking, libvirt]
+    - role: libvirt_bastion
+      tags: [infra, bastion, libvirt]
 
 # Play 2: Configure bastion host services (generates SSH key for cloud-user)
 - name: Configure bastion host
@@ -54,7 +89,8 @@
     sushy_app_credential_id: "{{ hostvars['localhost']['sushy_app_credential_id'] | default('') }}"
     sushy_app_credential_secret: "{{ hostvars['localhost']['sushy_app_credential_secret'] | default('') }}"
   roles:
-    - bastion_configure
+    - role: bastion_configure
+      tags: [bastion]
 
 # Play 3: Build appliance image on bastion (appliance mode only, skipped if image supplied)
 - name: Build appliance image on bastion
@@ -63,11 +99,12 @@
   become: true
   roles:
     - role: appliance_image
+      tags: [appliance]
       when:
-        - install_method | default('ove') == 'appliance'
+        - install_method == 'appliance'
         - appliance_image_path | default('') | length == 0
         - appliance_glance_image | default('') | length == 0
-        - not (infra_backend | default('openstack') == 'libvirt' and
+        - not (infra_backend == 'libvirt' and
                appliance_kvm_host_image_path | default('') | length > 0)
 
 # Play 4a: Create OVE node trunks and VMs (OpenStack)
@@ -75,6 +112,8 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  environment:
+    OS_CLIENT_CONFIG_FILE: "{{ cache_dir }}/clouds.yaml"
   pre_tasks:
     # --- Appliance mode: upload image from controller if local path supplied ---
     - name: Upload pre-built appliance image from controller to Glance
@@ -86,8 +125,8 @@
         container_format: bare
         state: present
       when:
-        - infra_backend | default('openstack') == 'openstack'
-        - install_method | default('ove') == 'appliance'
+        - infra_backend == 'openstack'
+        - install_method == 'appliance'
         - appliance_image_path | default('') | length > 0
         - appliance_glance_image | default('') | length == 0
 
@@ -101,12 +140,13 @@
         container_format: bare
         state: present
       when:
-        - infra_backend | default('openstack') == 'openstack'
-        - install_method | default('ove') == 'ove'
+        - infra_backend == 'openstack'
+        - install_method == 'ove'
         - ove_agent_glance_image | default('') | length == 0
   roles:
     - role: ove_nodes
-      when: infra_backend | default('openstack') == 'openstack'
+      tags: [nodes, openstack]
+      when: infra_backend == 'openstack'
 
 # Play 4b: Create OVE node VMs (libvirt)
 - name: Create OVE nodes (libvirt)
@@ -119,7 +159,7 @@
       ansible.builtin.set_fact:
         appliance_image_on_kvm: "{{ appliance_kvm_host_image_path }}"
       when:
-        - install_method | default('ove') == 'appliance'
+        - install_method == 'appliance'
         - appliance_kvm_host_image_path | default('') | length > 0
 
     - name: Check if appliance image exists on KVM host
@@ -127,7 +167,7 @@
         path: "{{ libvirt_pool_path | default('/var/lib/libvirt/images/ove-demo') }}/appliance-base.raw"
       register: appliance_on_kvm
       when:
-        - install_method | default('ove') == 'appliance'
+        - install_method == 'appliance'
         - appliance_image_path | default('') | length == 0
         - appliance_kvm_host_image_path | default('') | length == 0
 
@@ -139,7 +179,7 @@
         ssh_key_comment: "root@kvm-host"
       register: _kvm_root_ssh_key
       when:
-        - install_method | default('ove') == 'appliance'
+        - install_method == 'appliance'
         - appliance_image_path | default('') | length == 0
         - appliance_kvm_host_image_path | default('') | length == 0
         - not (appliance_on_kvm.stat.exists | default(false))
@@ -152,7 +192,7 @@
         state: present
       delegate_to: "{{ groups['ove_demo_bastion'][0] }}"
       when:
-        - install_method | default('ove') == 'appliance'
+        - install_method == 'appliance'
         - appliance_image_path | default('') | length == 0
         - appliance_kvm_host_image_path | default('') | length == 0
         - not (appliance_on_kvm.stat.exists | default(false))
@@ -163,7 +203,7 @@
         mode: "0711"
       delegate_to: "{{ groups['ove_demo_bastion'][0] }}"
       when:
-        - install_method | default('ove') == 'appliance'
+        - install_method == 'appliance'
         - appliance_image_path | default('') | length == 0
         - appliance_kvm_host_image_path | default('') | length == 0
         - not (appliance_on_kvm.stat.exists | default(false))
@@ -175,7 +215,7 @@
           cloud-user@{{ libvirt_nat_bastion_ip }}:{{ appliance_assets_dir | default('/root/appliance-assets') }}/appliance.raw
           {{ libvirt_pool_path | default('/var/lib/libvirt/images/ove-demo') }}/appliance-base.raw
       when:
-        - install_method | default('ove') == 'appliance'
+        - install_method == 'appliance'
         - appliance_image_path | default('') | length == 0
         - appliance_kvm_host_image_path | default('') | length == 0
         - not (appliance_on_kvm.stat.exists | default(false))
@@ -187,10 +227,11 @@
         dest: "{{ libvirt_pool_path | default('/var/lib/libvirt/images/ove-demo') }}/appliance-base.raw"
         mode: "0644"
       when:
-        - install_method | default('ove') == 'appliance'
+        - install_method == 'appliance'
         - appliance_image_path | default('') | length > 0
   roles:
-    - libvirt_ove_nodes
+    - role: libvirt_ove_nodes
+      tags: [nodes, libvirt]
 
 # Play 5: Deploy sushy-emulator on KVM host (libvirt only)
 - name: Deploy sushy-emulator on KVM host (libvirt)
@@ -198,4 +239,5 @@
   gather_facts: false
   become: true
   roles:
-    - kvm_sushy
+    - role: kvm_sushy
+      tags: [sushy, libvirt]

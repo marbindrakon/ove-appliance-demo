@@ -1,4 +1,6 @@
 ---
+state: present
+
 # Trunk sub-port definitions — maps VLAN IDs to networks
 # mgmt is the native (untagged) network carried by the parent port; only tagged VLANs go here
 trunk_subports:

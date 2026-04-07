@@ -4,7 +4,7 @@
 
 - name: Configure bastion mgmt interface statically (libvirt backend)
   ansible.builtin.include_tasks: mgmt_iface.yml
-  when: infra_backend | default('openstack') == 'libvirt'
+  when: infra_backend == 'libvirt'
 
 - name: Register with RHSM
   ansible.builtin.include_tasks: subscription.yml
@@ -23,5 +23,5 @@
 
 - name: Configure sushy-emulator
   ansible.builtin.include_tasks: sushy.yml
-  when: infra_backend | default('openstack') == 'openstack'
+  when: infra_backend == 'openstack'
 

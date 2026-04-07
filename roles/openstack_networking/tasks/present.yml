@@ -1,0 +1,28 @@
+---
+- name: Create demo networks
+  openstack.cloud.network:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ item.name }}"
+    port_security_enabled: "{{ item.port_security_enabled }}"
+    state: present
+  loop: "{{ demo_networks }}"
+
+- name: Create demo subnets
+  openstack.cloud.subnet:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ item.name }}-subnet"
+    network_name: "{{ item.name }}"
+    cidr: "{{ item.cidr }}"
+    enable_dhcp: "{{ item.enable_dhcp }}"
+    dns_nameservers: "{{ item.dns_nameservers | default(omit) }}"
+    state: present
+  loop: "{{ demo_networks }}"
+
+- name: Create router
+  openstack.cloud.router:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-router"
+    network: "{{ external_network }}"
+    interfaces:
+      - "{{ project_name }}-bastion-subnet"
+    state: present

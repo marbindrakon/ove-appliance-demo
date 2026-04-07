@@ -1,0 +1,11 @@
+---
+- name: Create OVE nodes (agent ISO method)
+  ansible.builtin.include_tasks: create_ove_nodes.yml
+  when: install_method == 'ove'
+
+- name: Create appliance nodes (factory imaging method)
+  ansible.builtin.include_tasks: create_appliance_nodes.yml
+  when: install_method == 'appliance'
+
+- name: Configure OVS trunk ports for all nodes
+  ansible.builtin.include_tasks: configure_ovs_trunks.yml

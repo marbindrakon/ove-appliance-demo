@@ -1,0 +1,7 @@
+---
+infra_backend: "openstack"
+install_method: "appliance"
+lab_id: 0
+ove_node_count: 4
+# appliance_glance_image: "openshift-appliance-250g"  # Use existing Glance image
+# appliance_image_path: ""                              # Or upload from controller

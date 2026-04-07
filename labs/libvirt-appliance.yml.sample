@@ -1,0 +1,6 @@
+---
+infra_backend: "libvirt"
+install_method: "appliance"
+lab_id: 10
+ove_node_count: 4
+# appliance_kvm_host_image_path: "/root/appliance-assets/appliance.raw"

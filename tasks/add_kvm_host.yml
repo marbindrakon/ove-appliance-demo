@@ -1,0 +1,9 @@
+---
+- name: Add KVM host to inventory
+  ansible.builtin.add_host:
+    name: kvm-host
+    groups: kvm_hosts
+    ansible_host: "{{ kvm_host }}"
+    ansible_user: "{{ kvm_host_user }}"
+    ansible_ssh_private_key_file: "{{ kvm_host_ssh_key | default(omit) }}"
+  when: infra_backend == 'libvirt'
