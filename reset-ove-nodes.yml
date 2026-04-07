@@ -145,20 +145,22 @@
       changed_when: true
       when: install_method | default('ove') == 'ove'
 
-    # --- Appliance mode: recreate boot disks from appliance image ---
+    # --- Appliance mode: recreate thin boot disks from base image ---
     - name: Delete existing boot disks (appliance mode)
       ansible.builtin.file:
-        path: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.raw"
+        path: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2"
         state: absent
       loop: "{{ range(0, ove_node_count | int) | list }}"
       when: install_method | default('ove') == 'appliance'
 
-    - name: Recreate boot disks from appliance image (appliance mode)
-      ansible.builtin.copy:
-        src: "{{ libvirt_pool_path }}/appliance-base.raw"
-        dest: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.raw"
-        remote_src: true
-        mode: "0644"
+    - name: Recreate thin boot disks from appliance base image (appliance mode)
+      ansible.builtin.command:
+        cmd: >
+          qemu-img create -f qcow2
+          -b {{ libvirt_pool_path }}/appliance-base.qcow2
+          -F qcow2
+          {{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2
+      changed_when: true
       loop: "{{ range(0, ove_node_count | int) | list }}"
       when: install_method | default('ove') == 'appliance'
 

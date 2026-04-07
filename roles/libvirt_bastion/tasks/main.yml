@@ -9,17 +9,33 @@
 - name: Create bastion VM
   when: "project_name ~ '-bastion' not in (bastion_domain_info | default({}))"
   block:
-    - name: Copy bastion RHEL qcow2 image to storage pool
-      ansible.builtin.copy:
-        src: "{{ bastion_qcow2_image }}"
-        dest: "{{ libvirt_pool_path }}/{{ project_name }}-bastion-boot.qcow2"
-        remote_src: true
-        force: false
-        mode: "0644"
-
-    - name: Resize bastion boot disk
+    - name: Create empty bastion boot disk at target size
       ansible.builtin.command:
-        cmd: qemu-img resize {{ libvirt_pool_path }}/{{ project_name }}-bastion-boot.qcow2 {{ bastion_disk_gb }}G
+        cmd: >
+          qemu-img create -f qcow2
+          {{ libvirt_pool_path }}/{{ project_name }}-bastion-boot.qcow2
+          {{ bastion_disk_gb }}G
+      changed_when: true
+
+    - name: Copy and expand root partition into bastion boot disk
+      ansible.builtin.command:
+        cmd: >
+          virt-resize --expand /dev/sda4
+          {{ bastion_qcow2_image }}
+          {{ libvirt_pool_path }}/{{ project_name }}-bastion-boot.qcow2
+      changed_when: true
+
+    - name: Inject SSH key, sudo, and remove cloud-init from bastion disk
+      ansible.builtin.command:
+        cmd: >
+          virt-customize -a {{ libvirt_pool_path }}/{{ project_name }}-bastion-boot.qcow2
+          --run-command 'id cloud-user || useradd -m -s /bin/bash cloud-user'
+          --ssh-inject 'cloud-user:string:{{ ssh_public_key }}'
+          --run-command 'echo "cloud-user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/cloud-user'
+          --run-command 'chmod 440 /etc/sudoers.d/cloud-user'
+          {{ ("--password 'cloud-user:password:" + bastion_console_password + "'") if bastion_console_password else "" }}
+          --uninstall cloud-init
+      no_log: "{{ not debug_mode | default(false) | bool }}"
       changed_when: true
 
     - name: Create cloud-init meta-data
@@ -78,15 +94,11 @@
   ansible.builtin.add_host:
     name: "{{ project_name }}-bastion"
     groups: ove_demo_bastion
-    ansible_host: "{{ kvm_host }}"
-    ansible_port: "{{ bastion_ssh_forward_port }}"
+    ansible_host: "{{ libvirt_nat_bastion_ip }}"
     ansible_user: cloud-user
+    ansible_ssh_private_key_file: "{{ bastion_ssh_private_key | default('~/.ssh/id_ed25519') }}"
+    ansible_ssh_common_args: >-
+      -o StrictHostKeyChecking=no
+      -o ProxyCommand="ssh -i {{ kvm_host_ssh_key }} -o StrictHostKeyChecking=no -W %h:%p {{ kvm_host_user }}@{{ kvm_host }}"
   delegate_to: localhost
-
-- name: Wait for bastion SSH to become available
-  ansible.builtin.wait_for:
-    host: "{{ kvm_host }}"
-    port: "{{ bastion_ssh_forward_port }}"
-    delay: 15
-    timeout: 300
-  delegate_to: localhost
+  become: false

@@ -1,4 +1,24 @@
 ---
+- name: Register KVM host with Red Hat CDN
+  ansible.builtin.command: >
+    subscription-manager register
+    --org {{ rh_subscription_org }}
+    --activationkey {{ rh_subscription_activation_key }}
+  args:
+    creates: /etc/pki/consumer/cert.pem
+  when: subscription_type == 'cdn'
+
+- name: Enable subscription-manager repo management
+  ansible.builtin.command: subscription-manager config --rhsm.manage_repos=1
+  changed_when: true
+  when: subscription_type == 'cdn'
+
+- name: Enable Fast Datapath repo for OVS packages
+  community.general.rhsm_repository:
+    name: fast-datapath-for-rhel-9-x86_64-rpms
+    state: enabled
+  when: subscription_type == 'cdn'
+
 - name: Install libvirt and OVS packages
   ansible.builtin.dnf:
     name:
@@ -9,6 +29,7 @@
       - python3-libvirt
       - python3-lxml
       - genisoimage
+      - libguestfs-tools-c
       - openvswitch3.3
     state: present
 

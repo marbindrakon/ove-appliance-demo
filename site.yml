@@ -43,6 +43,11 @@
   hosts: ove_demo_bastion
   gather_facts: true
   become: true
+  pre_tasks:
+    - name: Wait for bastion SSH to become available
+      ansible.builtin.wait_for_connection:
+        delay: 15
+        timeout: 300
   vars:
     os_auth_url: "{{ lookup('env', 'OS_AUTH_URL') | default(hostvars['localhost']['os_auth_url'] | default(''), true) }}"
     os_region: "{{ lookup('env', 'OS_REGION_NAME') | default(hostvars['localhost']['os_region'] | default('RegionOne'), true) }}"
@@ -62,6 +67,8 @@
         - install_method | default('ove') == 'appliance'
         - appliance_image_path | default('') | length == 0
         - appliance_glance_image | default('') | length == 0
+        - not (infra_backend | default('openstack') == 'libvirt' and
+               appliance_kvm_host_image_path | default('') | length > 0)
 
 # Play 4a: Create OVE node trunks and VMs (OpenStack)
 - name: Create OVE nodes (OpenStack)
@@ -108,30 +115,76 @@
   become: true
   pre_tasks:
     # Transfer appliance image from bastion to KVM host if built on bastion
+    - name: Use appliance image already on KVM host
+      ansible.builtin.set_fact:
+        appliance_image_on_kvm: "{{ appliance_kvm_host_image_path }}"
+      when:
+        - install_method | default('ove') == 'appliance'
+        - appliance_kvm_host_image_path | default('') | length > 0
+
     - name: Check if appliance image exists on KVM host
       ansible.builtin.stat:
-        path: "{{ libvirt_pool_path }}/appliance-base.raw"
+        path: "{{ libvirt_pool_path | default('/var/lib/libvirt/images/ove-demo') }}/appliance-base.raw"
       register: appliance_on_kvm
       when:
         - install_method | default('ove') == 'appliance'
         - appliance_image_path | default('') | length == 0
+        - appliance_kvm_host_image_path | default('') | length == 0
+
+    - name: Generate SSH key on KVM host root for bastion image transfer
+      ansible.builtin.user:
+        name: root
+        generate_ssh_key: true
+        ssh_key_type: ed25519
+        ssh_key_comment: "root@kvm-host"
+      register: _kvm_root_ssh_key
+      when:
+        - install_method | default('ove') == 'appliance'
+        - appliance_image_path | default('') | length == 0
+        - appliance_kvm_host_image_path | default('') | length == 0
+        - not (appliance_on_kvm.stat.exists | default(false))
+
+    - name: Authorize KVM host root key on bastion for image transfer
+      ansible.posix.authorized_key:
+        user: cloud-user
+        key: "{{ _kvm_root_ssh_key.ssh_public_key }}"
+        comment: "kvm-host-transfer"
+        state: present
+      delegate_to: "{{ groups['ove_demo_bastion'][0] }}"
+      when:
+        - install_method | default('ove') == 'appliance'
+        - appliance_image_path | default('') | length == 0
+        - appliance_kvm_host_image_path | default('') | length == 0
+        - not (appliance_on_kvm.stat.exists | default(false))
+
+    - name: Ensure /root is traversable on bastion for appliance image SCP transfer
+      ansible.builtin.file:
+        path: /root
+        mode: "0711"
+      delegate_to: "{{ groups['ove_demo_bastion'][0] }}"
+      when:
+        - install_method | default('ove') == 'appliance'
+        - appliance_image_path | default('') | length == 0
+        - appliance_kvm_host_image_path | default('') | length == 0
+        - not (appliance_on_kvm.stat.exists | default(false))
 
     - name: Fetch appliance image from bastion to KVM host
       ansible.builtin.command:
         cmd: >
           scp -o StrictHostKeyChecking=no
-          cloud-user@{{ bastion_mgmt_ip }}:/root/appliance-assets/appliance.raw
-          {{ libvirt_pool_path }}/appliance-base.raw
+          cloud-user@{{ libvirt_nat_bastion_ip | default('192.168.200.10') }}:{{ appliance_assets_dir | default('/root/appliance-assets') }}/appliance.raw
+          {{ libvirt_pool_path | default('/var/lib/libvirt/images/ove-demo') }}/appliance-base.raw
       when:
         - install_method | default('ove') == 'appliance'
         - appliance_image_path | default('') | length == 0
+        - appliance_kvm_host_image_path | default('') | length == 0
         - not (appliance_on_kvm.stat.exists | default(false))
       changed_when: true
 
     - name: Copy pre-built appliance image from controller to KVM host
       ansible.builtin.copy:
         src: "{{ appliance_image_path }}"
-        dest: "{{ libvirt_pool_path }}/appliance-base.raw"
+        dest: "{{ libvirt_pool_path | default('/var/lib/libvirt/images/ove-demo') }}/appliance-base.raw"
         mode: "0644"
       when:
         - install_method | default('ove') == 'appliance'

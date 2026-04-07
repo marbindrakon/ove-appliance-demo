@@ -39,10 +39,12 @@
       <target dev='bastion-mgmt'/>
       <model type='virtio'/>
     </interface>
-    <serial type='pty'>
+    <serial type='file'>
+      <source path='/var/log/libvirt/qemu/{{ project_name }}-bastion-console.log'/>
       <target port='0'/>
     </serial>
-    <console type='pty'>
+    <console type='file'>
+      <source path='/var/log/libvirt/qemu/{{ project_name }}-bastion-console.log'/>
       <target type='serial' port='0'/>
     </console>
     <graphics type='vnc' port='-1' autoport='yes' listen='0.0.0.0'/>

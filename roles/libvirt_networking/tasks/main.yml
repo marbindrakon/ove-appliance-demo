@@ -10,13 +10,9 @@
   openvswitch.openvswitch.openvswitch_port:
     bridge: "{{ ovs_bridge_name }}"
     port: mgmt-host
+    tag: "{{ mgmt_vlan_id }}"
     state: present
     set: "Interface mgmt-host type=internal"
-
-- name: Set mgmt-host port as access port on mgmt VLAN
-  ansible.builtin.command:
-    cmd: ovs-vsctl set port mgmt-host tag={{ mgmt_vlan_id }}
-  changed_when: true
 
 - name: Assign IP to mgmt-host interface
   ansible.builtin.command:
@@ -73,36 +69,17 @@
     reload: true
     state: present
 
-- name: Add iptables DNAT rule for bastion SSH
-  ansible.builtin.iptables:
-    table: nat
-    chain: PREROUTING
-    protocol: tcp
-    destination_port: "{{ bastion_ssh_forward_port }}"
-    jump: DNAT
-    to_destination: "{{ libvirt_nat_bastion_ip }}:22"
-    comment: "OVE demo bastion SSH forward"
-    state: present
-
-- name: Add iptables FORWARD rule for bastion SSH
-  ansible.builtin.iptables:
-    chain: FORWARD
-    protocol: tcp
-    destination: "{{ libvirt_nat_bastion_ip }}"
-    destination_port: "22"
-    jump: ACCEPT
-    comment: "OVE demo bastion SSH forward"
-    state: present
-
 # --- dnsmasq for mgmt network DHCP ---
 
 - name: Build mgmt DHCP host list from node IPs
   ansible.builtin.set_fact:
-    _mgmt_dhcp_hosts: >-
+    _mgmt_dhcp_hosts: "{{ _raw | from_json }}"
+    bastion_mgmt_mac: "{{ mac_prefix }}:00:01"
+  vars:
+    _raw: >-
       [{% for idx in range(0, ove_node_count | int) %}
       {"mac": "{{ mac_prefix }}:01:{{ '%02x' | format(idx + 11) }}", "ip": "{{ ove_node_mgmt_ips[idx] }}"}{{ "," if not loop.last }}
       {% endfor %}]
-    bastion_mgmt_mac: "{{ mac_prefix }}:00:01"
 
 - name: Install dnsmasq
   ansible.builtin.dnf:

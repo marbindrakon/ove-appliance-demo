@@ -14,13 +14,23 @@
     creates: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2"
   loop: "{{ range(0, ove_node_count | int) | list }}"
 
-- name: Copy agent ISO for each OVE node
+- name: Copy agent ISO from controller for each OVE node
   ansible.builtin.copy:
     src: "{{ ove_agent_iso_path }}"
     dest: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-usb.raw"
     force: false
     mode: "0644"
   loop: "{{ range(0, ove_node_count | int) | list }}"
+  when: ove_kvm_host_iso_path | default('') | length == 0
+
+- name: Copy agent ISO from KVM host path for each OVE node
+  ansible.builtin.command:
+    cmd: >
+      cp {{ ove_kvm_host_iso_path }}
+      {{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-usb.raw
+    creates: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-usb.raw"
+  loop: "{{ range(0, ove_node_count | int) | list }}"
+  when: ove_kvm_host_iso_path | default('') | length > 0
 
 - name: Define and start OVE node VMs
   ansible.builtin.include_tasks: define_node.yml

@@ -55,6 +55,11 @@
           build
       changed_when: true
 
+    - name: Make appliance image readable for transfer
+      ansible.builtin.file:
+        path: "{{ appliance_assets_dir }}/appliance.raw"
+        mode: "0644"
+
     - name: Upload appliance image to Glance
       openstack.cloud.image:
         cloud: sushy-cloud

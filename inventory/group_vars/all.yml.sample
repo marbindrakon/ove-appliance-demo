@@ -31,7 +31,7 @@ os_auth_url: ""    # Must be set by operator (e.g., https://identity.example.com
 os_region: "RegionOne"  # Must be set by operator — OpenStack region name for sushy-emulator
 
 # Subscription
-subscription_type: "cdn"  # "cdn" for Red Hat CDN, "satellite" for Satellite
+subscription_type: "cdn"  # "cdn" for Red Hat CDN, "satellite" for Satellite, "none" to skip (cloud images, Alma, CentOS)
 satellite_url: ""  # Required when subscription_type == satellite (e.g., http://satellite.example.com)
 rh_subscription_org: ""  # Must be set by operator
 rh_subscription_activation_key: ""  # Must be set by operator
@@ -77,6 +77,9 @@ ove_agent_iso_path: "{{ playbook_dir }}/agent-ove.x86_64.iso"
 # Existing Glance image name or ID to use as the agent ISO (optional).
 # If set, skips the local ISO upload and uses this image directly. Not deleted on teardown.
 ove_agent_glance_image: ""
+# Path to an agent ISO already present on the KVM host (libvirt backend only, optional).
+# If set, skips the controller transfer and uses the file directly as the node USB image source.
+ove_kvm_host_iso_path: ""
 
 # Appliance mode settings (only used when install_method == "appliance")
 appliance_ocp_version: "4.20"
@@ -95,6 +98,9 @@ appliance_image_path: ""
 # Existing Glance image name or ID to use as the appliance image (optional).
 # If set, skips both the bastion build and any local upload. Not deleted on teardown.
 appliance_glance_image: ""
+# Path to a pre-built appliance.raw already present on the KVM host (libvirt backend only, optional).
+# If set, skips the bastion build and any controller transfer; used directly as the node boot image.
+appliance_kvm_host_image_path: ""
 
 # Networks
 bastion_network_cidr: "10.0.0.0/24"
@@ -154,12 +160,13 @@ libvirt_pool_path: "/var/lib/libvirt/images/ove-demo"
 
 # Bastion RHEL qcow2 image (path on KVM host)
 bastion_qcow2_image: ""   # Must be set by operator — e.g., /var/lib/libvirt/images/rhel-9.5.qcow2
+bastion_console_password: ""  # Optional — enables password login for cloud-user (console/emergency access)
 
 # Bastion NAT network (for external access via port forwarding)
 libvirt_nat_network_name: "ove-bastion-nat"
-libvirt_nat_network_cidr: "192.168.122.0/24"
-libvirt_nat_bastion_ip: "192.168.122.10"
-libvirt_nat_gateway_ip: "192.168.122.1"
+libvirt_nat_network_cidr: "192.168.200.0/24"
+libvirt_nat_bastion_ip: "192.168.200.10"
+libvirt_nat_gateway_ip: "192.168.200.1"
 
 # OVS bridge
 ovs_bridge_name: "br-ove"

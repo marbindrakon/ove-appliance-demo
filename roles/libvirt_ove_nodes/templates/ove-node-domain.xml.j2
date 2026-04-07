@@ -4,7 +4,6 @@
   <vcpu>{{ ove_node_vcpus }}</vcpu>
   <os firmware='efi'>
     <type arch='x86_64' machine='q35'>hvm</type>
-    <boot dev='hd'/>
   </os>
   <features>
     <acpi/>
@@ -26,13 +25,6 @@
       <source file='{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}-usb.raw'/>
       <target dev='vdb' bus='virtio'/>
       <boot order='2'/>
-    </disk>
-{% else %}
-    <!-- CD-ROM volume for virtual media -->
-    <disk type='file' device='cdrom'>
-      <driver name='qemu' type='raw'/>
-      <source file='{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}-cdrom.iso'/>
-      <target dev='sda' bus='sata'/>
     </disk>
 {% endif %}
     <!-- NIC 1: trunk0 on OVS -->

@@ -1,4 +1,7 @@
 ---
+libvirt_pool_path: "/var/lib/libvirt/images/ove-demo"
+ovs_bridge_name: "br-ove"
+mac_prefix: "52:54:00:10"
 ove_node_vcpus: 16
 ove_node_ram_mb: 65536
 ove_node_disk_gb: 250

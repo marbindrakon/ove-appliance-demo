@@ -4,8 +4,9 @@ bind-interfaces
 no-resolv
 no-hosts
 
-# DHCP range on mgmt network — only static assignments used
+# DHCP range on mgmt network — only static assignments used; unknown MACs are ignored
 dhcp-range=10.10.0.10,10.10.0.200,255.255.255.0,infinite
+dhcp-ignore=tag:!known
 
 # Bastion static assignment
 dhcp-host={{ bastion_mgmt_mac }},{{ bastion_mgmt_ip }},infinite

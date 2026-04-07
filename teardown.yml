@@ -298,10 +298,13 @@
       loop_control:
         label: "{{ item.path | basename }}"
 
-    - name: Delete appliance base image
+    - name: Delete appliance base images
       ansible.builtin.file:
-        path: "{{ libvirt_pool_path }}/appliance-base.raw"
+        path: "{{ item }}"
         state: absent
+      loop:
+        - "{{ libvirt_pool_path }}/appliance-base.raw"
+        - "{{ libvirt_pool_path }}/appliance-base.qcow2"
 
     # --- Stop sushy-emulator ---
     - name: Stop and disable sushy-emulator

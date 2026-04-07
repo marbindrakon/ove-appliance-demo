@@ -1,26 +1,26 @@
 ---
 # create_appliance_nodes.yml — Appliance factory imaging method for libvirt
 #
-# Two disks per node:
-#   vda: appliance.raw boot disk (pre-built OCP agent installer)
-#   sda: blank CD-ROM for virtual media config delivery
+# One disk per node:
+#   vda: thin qcow2 boot disk backed by appliance-base.qcow2
+# sushy-emulator attaches a CD-ROM device dynamically on InsertMedia — no pre-defined slot needed
 
-- name: Copy appliance image for each node boot disk
-  ansible.builtin.copy:
-    src: "{{ appliance_image_on_kvm }}"
-    dest: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.raw"
-    remote_src: true
-    force: false
-    mode: "0644"
-  loop: "{{ range(0, ove_node_count | int) | list }}"
-
-- name: Create blank CD-ROM images for virtual media
+- name: Convert appliance source image to qcow2 base image
   ansible.builtin.command:
     cmd: >
-      qemu-img create -f raw
-      {{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-cdrom.iso
-      {{ appliance_cdrom_volume_gb }}G
-    creates: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-cdrom.iso"
+      qemu-img convert -O qcow2
+      {{ appliance_image_on_kvm }}
+      {{ libvirt_pool_path }}/appliance-base.qcow2
+    creates: "{{ libvirt_pool_path }}/appliance-base.qcow2"
+
+- name: Create thin qcow2 boot disk for each node
+  ansible.builtin.command:
+    cmd: >
+      qemu-img create -f qcow2
+      -b {{ libvirt_pool_path }}/appliance-base.qcow2
+      -F qcow2
+      {{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2
+    creates: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2"
   loop: "{{ range(0, ove_node_count | int) | list }}"
 
 - name: Define and start appliance node VMs
@@ -29,5 +29,5 @@
   loop_control:
     loop_var: node_idx
   vars:
-    _boot_disk_format: raw
-    _boot_disk_ext: raw
+    _boot_disk_format: qcow2
+    _boot_disk_ext: qcow2

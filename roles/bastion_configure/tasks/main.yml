@@ -2,6 +2,10 @@
 - name: Generate SSH key for cloud-user
   ansible.builtin.include_tasks: ssh_key.yml
 
+- name: Configure bastion mgmt interface statically (libvirt backend)
+  ansible.builtin.include_tasks: mgmt_iface.yml
+  when: infra_backend | default('openstack') == 'libvirt'
+
 - name: Register with RHSM
   ansible.builtin.include_tasks: subscription.yml
 
