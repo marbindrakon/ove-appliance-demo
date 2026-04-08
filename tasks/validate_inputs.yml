@@ -29,6 +29,14 @@
     fail_msg: "libvirt backend requires kvm_host, ssh_public_key, and bastion_qcow2_image"
   when: infra_backend == 'libvirt'
 
+- name: Validate ove_master_count range
+  ansible.builtin.assert:
+    that:
+      - ove_master_count | int >= 1
+      - ove_master_count | int <= 5
+      - ove_master_count | int <= ove_node_count | int
+    fail_msg: "ove_master_count must be 1-5 and <= ove_node_count ({{ ove_node_count }}), got {{ ove_master_count }}"
+
 - name: Validate lab_id range
   ansible.builtin.assert:
     that:

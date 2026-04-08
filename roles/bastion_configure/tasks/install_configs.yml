@@ -1,0 +1,34 @@
+---
+- name: Read cloud-user SSH public key
+  ansible.builtin.slurp:
+    src: /home/cloud-user/.ssh/id_ed25519.pub
+  register: _install_config_ssh_key_raw
+
+- name: Set SSH public key fact for install configs
+  ansible.builtin.set_fact:
+    bastion_ssh_public_key: "{{ _install_config_ssh_key_raw.content | b64decode | trim }}"
+
+- name: Create install configs directory
+  ansible.builtin.file:
+    path: /home/cloud-user/appliance-install-configs
+    state: directory
+    owner: cloud-user
+    group: cloud-user
+    mode: "0755"
+
+- name: Template install-config.yaml
+  ansible.builtin.template:
+    src: install-config.yaml.j2
+    dest: /home/cloud-user/appliance-install-configs/install-config.yaml
+    owner: cloud-user
+    group: cloud-user
+    mode: "0600"
+  no_log: "{{ not debug_mode | default(false) | bool }}"
+
+- name: Template agent-config.yaml
+  ansible.builtin.template:
+    src: agent-config.yaml.j2
+    dest: /home/cloud-user/appliance-install-configs/agent-config.yaml
+    owner: cloud-user
+    group: cloud-user
+    mode: "0644"

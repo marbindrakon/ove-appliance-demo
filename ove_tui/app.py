@@ -14,7 +14,9 @@ import yaml
 from textual import work
 from textual.app import App
 from textual.binding import Binding
+from textual.containers import Vertical
 from textual.reactive import reactive
+from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Header, RichLog, Static
 
 # ---------------------------------------------------------------------------
@@ -23,7 +25,8 @@ from textual.widgets import DataTable, Footer, Header, RichLog, Static
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LABS_DIR = PROJECT_ROOT / "labs"
-STATE_ROOT = PROJECT_ROOT / ".ove-demo-cache" / "tui"
+CACHE_ROOT = PROJECT_ROOT / ".ove-demo-cache"
+STATE_ROOT = CACHE_ROOT / "tui"
 CALLBACK_DIR = PROJECT_ROOT / "callback_plugins"
 
 PLAYBOOKS = {
@@ -183,6 +186,89 @@ STATE_DISPLAY = {
 
 
 # ---------------------------------------------------------------------------
+# Access info
+# ---------------------------------------------------------------------------
+
+
+def read_lab_access_info(lab_id: int) -> dict[str, str]:
+    """Read access-info files from .ove-demo-cache/lab-{lab_id}/."""
+    cache_dir = CACHE_ROOT / f"lab-{lab_id}"
+    info = {}
+    for name in ("project-suffix", "bastion-password", "sushy-password"):
+        path = cache_dir / name
+        if path.is_file():
+            try:
+                info[name] = path.read_text().strip()
+            except OSError:
+                pass
+    return info
+
+
+class AccessInfoScreen(ModalScreen):
+    """Modal overlay showing lab access credentials."""
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "Close"),
+        Binding("i", "dismiss", "Close"),
+    ]
+
+    CSS = """
+    AccessInfoScreen {
+        align: center middle;
+    }
+    #info-dialog {
+        width: 60;
+        height: auto;
+        max-height: 20;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    #info-title {
+        text-align: center;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    #info-content {
+        margin-bottom: 1;
+    }
+    #info-hint {
+        text-align: center;
+        color: $text-muted;
+    }
+    """
+
+    def __init__(self, lab_name: str, lab_id: int) -> None:
+        super().__init__()
+        self.lab_name = lab_name
+        self.lab_id = lab_id
+
+    def compose(self):
+        info = read_lab_access_info(self.lab_id)
+
+        lines = []
+        lines.append(f"  Lab ID:            {self.lab_id}")
+        if "project-suffix" in info:
+            lines.append(f"  Project Suffix:    {info['project-suffix']}")
+        if "bastion-password" in info:
+            lines.append(f"  Bastion Password:  {info['bastion-password']}")
+        if "sushy-password" in info:
+            lines.append(f"  Sushy Password:    {info['sushy-password']}")
+
+        if len(lines) == 1:
+            lines.append("")
+            lines.append("  [dim]No credentials available yet.[/]")
+            lines.append("  [dim]Deploy the lab to generate them.[/]")
+
+        content = "\n".join(lines)
+
+        with Vertical(id="info-dialog"):
+            yield Static(f"Access Info — {self.lab_name}", id="info-title")
+            yield Static(content, id="info-content")
+            yield Static("[dim]Press Escape or Enter to close[/]", id="info-hint")
+
+
+# ---------------------------------------------------------------------------
 # TUI Widgets
 # ---------------------------------------------------------------------------
 
@@ -258,6 +344,7 @@ class OveLabManager(App):
         Binding("r", "reset", "Reset"),
         Binding("a", "deploy_all", "Deploy All"),
         Binding("x", "cancel", "Cancel"),
+        Binding("i", "info", "Info"),
         Binding("enter", "toggle_log", "View Logs", priority=True),
         Binding("l", "next_log", "Next Log"),
         Binding("y", "confirm_yes", "Yes", show=False),
@@ -437,6 +524,11 @@ class OveLabManager(App):
         return None
 
     # -- actions --
+
+    def action_info(self) -> None:
+        lab = self._get_lab(self.selected_lab)
+        if lab:
+            self.push_screen(AccessInfoScreen(lab["name"], lab["lab_id"]))
 
     def action_toggle_log(self) -> None:
         if self.selected_lab and self.selected_lab != self.log_lab:

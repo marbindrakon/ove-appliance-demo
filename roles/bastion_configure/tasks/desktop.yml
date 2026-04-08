@@ -1,10 +1,18 @@
 ---
+- name: Check if GNOME desktop is already installed
+  ansible.builtin.command:
+    cmd: rpm -q gnome-shell podman
+  register: _desktop_check
+  changed_when: false
+  failed_when: false
+
 - name: Install GNOME desktop environment and podman
   ansible.builtin.dnf:
     name:
       - "@workstation"
       - podman
     state: present
+  when: _desktop_check.rc != 0
 
 - name: Set graphical as default systemd target
   ansible.builtin.command:

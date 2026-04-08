@@ -62,7 +62,8 @@ ove_node_mgmt_ips:
   - "10.10.{{ lab_id | default(0) }}.13"
   - "10.10.{{ lab_id | default(0) }}.14"
 
-# OVE cluster DNS
+# OVE cluster
+ove_master_count: 3  # Number of control plane nodes (1–5); remaining nodes are workers
 cluster_name: "ove"
 base_domain: "example.com"
 api_vip: "10.10.{{ lab_id | default(0) }}.100"
@@ -122,6 +123,10 @@ storage_vlan_id: 20
 workload1_vlan_id: 30
 workload2_vlan_id: 40
 workload3_vlan_id: 50
+
+# Optional MTU settings for OVE node interfaces (omitted from install configs if unset)
+# mgmt_mtu: 9000
+# storage_mtu: 9000
 
 # Network definitions — used by both site.yml and teardown.yml
 demo_networks:

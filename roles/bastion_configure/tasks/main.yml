@@ -25,3 +25,7 @@
   ansible.builtin.include_tasks: sushy.yml
   when: infra_backend == 'openstack'
 
+- name: Render appliance install configs
+  ansible.builtin.include_tasks: install_configs.yml
+  when: install_method == 'appliance'
+

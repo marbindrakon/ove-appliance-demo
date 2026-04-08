@@ -1,0 +1,82 @@
+apiVersion: v1beta1
+kind: AgentConfig
+metadata:
+  name: {{ cluster_name }}
+rendezvousIP: {{ ove_node_mgmt_ips[0] }}
+hosts:
+{% for idx in range(ove_node_count | int) %}
+{% set mgmt_ip = ove_node_mgmt_ips[idx] %}
+{% set mgmt_prefix = mgmt_network_cidr.split('/')[1] %}
+{% set storage_net_parts = storage_network_cidr.split('/')[0].split('.') %}
+{% set host_octet = mgmt_ip.split('.')[3] %}
+{% set storage_ip = storage_net_parts[0] ~ '.' ~ storage_net_parts[1] ~ '.' ~ storage_net_parts[2] ~ '.' ~ host_octet %}
+{% set storage_prefix = storage_network_cidr.split('/')[1] %}
+{% set role = 'master' if idx < ove_master_count | int else 'worker' %}
+  - hostname: {{ ove_node_name_prefix }}-{{ idx }}
+    role: {{ role }}
+    interfaces:
+      - name: trunk0
+{% if infra_backend == 'libvirt' %}
+        macAddress: "{{ mac_prefix }}:01:{{ '%02x' | format(idx + 11) }}"
+{% else %}
+        macAddress: "FIXME"  # Update with actual trunk0 MAC after node creation
+{% endif %}
+      - name: trunk1
+{% if infra_backend == 'libvirt' %}
+        macAddress: "{{ mac_prefix }}:02:{{ '%02x' | format(idx + 11) }}"
+{% else %}
+        macAddress: "FIXME"  # Update with actual trunk1 MAC after node creation
+{% endif %}
+    networkConfig:
+      interfaces:
+        - name: trunk0
+          type: ethernet
+          state: up
+{% if mgmt_mtu is defined %}
+          mtu: {{ mgmt_mtu }}
+{% endif %}
+          ipv4:
+            enabled: true
+            address:
+              - ip: {{ mgmt_ip }}
+                prefix-length: {{ mgmt_prefix }}
+            dhcp: false
+          ipv6:
+            enabled: false
+        - name: trunk1
+          type: ethernet
+          state: up
+{% if storage_mtu is defined %}
+          mtu: {{ storage_mtu }}
+{% endif %}
+          ipv4:
+            enabled: false
+          ipv6:
+            enabled: false
+        - name: trunk1.{{ storage_vlan_id }}
+          type: vlan
+          state: up
+          vlan:
+            base-iface: trunk1
+            id: {{ storage_vlan_id }}
+{% if storage_mtu is defined %}
+          mtu: {{ storage_mtu }}
+{% endif %}
+          ipv4:
+            enabled: true
+            address:
+              - ip: {{ storage_ip }}
+                prefix-length: {{ storage_prefix }}
+            dhcp: false
+          ipv6:
+            enabled: false
+      dns-resolver:
+        config:
+          server:
+            - {{ bastion_mgmt_ip }}
+      routes:
+        config:
+          - destination: 0.0.0.0/0
+            next-hop-address: {{ bastion_mgmt_ip }}
+            next-hop-interface: trunk0
+{% endfor %}
