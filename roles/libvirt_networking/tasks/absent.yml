@@ -28,6 +28,18 @@
     state: absent
   failed_when: false
 
+- name: Destroy OVS bridge network
+  community.libvirt.virt_net:
+    name: "{{ libvirt_ovs_network_name }}"
+    state: inactive
+  failed_when: false
+
+- name: Undefine OVS bridge network
+  community.libvirt.virt_net:
+    name: "{{ libvirt_ovs_network_name }}"
+    state: absent
+  failed_when: false
+
 - name: Delete OVS bridge
   openvswitch.openvswitch.openvswitch_bridge:
     bridge: "{{ ovs_bridge_name }}"

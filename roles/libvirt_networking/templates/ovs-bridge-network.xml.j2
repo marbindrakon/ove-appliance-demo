@@ -1,0 +1,20 @@
+<network>
+  <name>{{ libvirt_ovs_network_name }}</name>
+  <forward mode='bridge'/>
+  <bridge name='{{ ovs_bridge_name }}'/>
+  <virtualport type='openvswitch'/>
+  <portgroup name='bastion-access'>
+    <vlan>
+      <tag id='{{ mgmt_vlan_id }}'/>
+    </vlan>
+  </portgroup>
+  <portgroup name='ove-trunk'>
+    <vlan trunk='yes'>
+      <tag id='{{ mgmt_vlan_id }}' nativeMode='untagged'/>
+      <tag id='{{ storage_vlan_id }}'/>
+      <tag id='{{ workload1_vlan_id }}'/>
+      <tag id='{{ workload2_vlan_id }}'/>
+      <tag id='{{ workload3_vlan_id }}'/>
+    </vlan>
+  </portgroup>
+</network>

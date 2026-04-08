@@ -48,12 +48,10 @@
   loop: "{{ range(0, ove_node_count | int) | list }}"
   when: install_method == 'appliance'
 
-# --- Start VMs and reconfigure OVS ---
+# --- Start VMs ---
 - name: Start OVE node VMs
   community.libvirt.virt:
     name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}"
     state: running
   loop: "{{ range(0, ove_node_count | int) | list }}"
 
-- name: Reconfigure OVS trunk ports
-  ansible.builtin.include_tasks: configure_ovs_trunks.yml

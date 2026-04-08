@@ -47,11 +47,6 @@
     name: "{{ project_name }}-bastion"
     state: running
 
-- name: Set bastion mgmt OVS port as access port on mgmt VLAN
-  ansible.builtin.command:
-    cmd: ovs-vsctl set port {{ ovs_bastion_port }} tag={{ mgmt_vlan_id }}
-  changed_when: true
-
 - name: Add bastion to in-memory inventory
   ansible.builtin.add_host:
     name: "{{ project_name }}-bastion"

@@ -24,10 +24,9 @@
       <mac address='{{ bastion_nat_mac }}'/>
       <model type='virtio'/>
     </interface>
-    <!-- NIC 2: OVS bridge for mgmt network -->
-    <interface type='bridge'>
-      <source bridge='{{ ovs_bridge_name }}'/>
-      <virtualport type='openvswitch'/>
+    <!-- NIC 2: OVS bridge for mgmt network (VLAN config from bastion-access portgroup) -->
+    <interface type='network'>
+      <source network='{{ libvirt_ovs_network_name }}' portgroup='bastion-access'/>
       <mac address='{{ bastion_mgmt_mac }}'/>
       <target dev='{{ ovs_bastion_port }}'/>
       <model type='virtio'/>

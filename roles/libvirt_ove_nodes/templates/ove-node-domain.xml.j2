@@ -27,18 +27,16 @@
       <boot order='2'/>
     </disk>
 {% endif %}
-    <!-- NIC 1: trunk0 on OVS -->
-    <interface type='bridge'>
-      <source bridge='{{ ovs_bridge_name }}'/>
-      <virtualport type='openvswitch'/>
+    <!-- NIC 1: trunk0 on OVS (VLAN config from ove-trunk portgroup) -->
+    <interface type='network'>
+      <source network='{{ libvirt_ovs_network_name }}' portgroup='ove-trunk'/>
       <mac address='{{ mac_prefix }}:01:{{ "%02x" | format(node_idx | int + 11) }}'/>
       <target dev='l{{ lab_id | default(0) }}-n{{ node_idx }}-t0'/>
       <model type='virtio'/>
     </interface>
-    <!-- NIC 2: trunk1 on OVS -->
-    <interface type='bridge'>
-      <source bridge='{{ ovs_bridge_name }}'/>
-      <virtualport type='openvswitch'/>
+    <!-- NIC 2: trunk1 on OVS (VLAN config from ove-trunk portgroup) -->
+    <interface type='network'>
+      <source network='{{ libvirt_ovs_network_name }}' portgroup='ove-trunk'/>
       <mac address='{{ mac_prefix }}:02:{{ "%02x" | format(node_idx | int + 11) }}'/>
       <target dev='l{{ lab_id | default(0) }}-n{{ node_idx }}-t1'/>
       <model type='virtio'/>

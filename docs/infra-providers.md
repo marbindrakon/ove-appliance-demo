@@ -152,9 +152,9 @@ Listens on port `8000 + lab_id`, reachable from OVE nodes at `10.10.{lab_id}.254
 
 For appliance mode, the KVM host uses a qcow2 backing file chain: a shared `appliance-base.qcow2` with thin-provisioned per-node overlay disks. Node resets are near-instant via `qemu-img create -b`.
 
-### OVS Trunk Port Persistence
+### OVS VLAN Configuration
 
-OVS port VLAN settings are lost when a VM restarts (libvirt recreates the tap device). The `configure_ovs_trunks.yml` task re-applies settings after VM start. The `reset-ove-nodes.yml` playbook also reconfigures trunks after restarting nodes.
+VLAN trunk and access port settings are defined via libvirt portgroups on the `ove-ovs-{lab_id}` network (which wraps the OVS bridge). Libvirt applies the portgroup VLAN configuration to OVS automatically each time a VM starts, so settings persist across reboots and manual `virsh` restarts.
 
 ### Multi-Lab Isolation
 
@@ -163,6 +163,7 @@ The `lab_id` variable namespaces all per-lab resources on a KVM host so multiple
 | Resource | Naming Pattern |
 |---|---|
 | OVS bridge | `br-ove-{lab_id}` |
+| OVS bridge network | `ove-ovs-{lab_id}` |
 | NAT network | `ove-nat-{lab_id}` |
 | Mgmt subnet | `10.10.{lab_id}.0/24` |
 | Storage subnet | `10.20.{lab_id}.0/24` |

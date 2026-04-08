@@ -197,6 +197,9 @@ mac_prefix: "52:54:00:{{ '%02x' | format(lab_id | int) }}"
 bastion_mgmt_mac: "{{ mac_prefix }}:00:01"
 bastion_nat_mac: "52:54:00:00:{{ '%02x' | format(lab_id | int) }}:10"
 
+# Auto-derived libvirt OVS bridge network (portgroups provide persistent VLAN config)
+libvirt_ovs_network_name: "ove-ovs-{{ lab_id }}"
+
 # Auto-derived libvirt NAT network resources
 libvirt_nat_network_name: "ove-nat-{{ lab_id }}"
 libvirt_nat_network_cidr: "192.168.{{ 200 + lab_id | int }}.0/24"

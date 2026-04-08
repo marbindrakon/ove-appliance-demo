@@ -24,6 +24,32 @@
     cmd: ip link set {{ ovs_mgmt_port }} up
   changed_when: true
 
+# --- libvirt network wrapping OVS bridge (portgroups define VLAN config) ---
+
+- name: Check if OVS bridge network exists
+  community.libvirt.virt_net:
+    name: "{{ libvirt_ovs_network_name }}"
+    command: info
+  register: ovs_net_info
+  failed_when: false
+
+- name: Define OVS bridge network with portgroups
+  community.libvirt.virt_net:
+    command: define
+    name: "{{ libvirt_ovs_network_name }}"
+    xml: "{{ lookup('template', 'ovs-bridge-network.xml.j2') }}"
+  when: ovs_net_info is failed or libvirt_ovs_network_name not in (ovs_net_info.networks | default({}))
+
+- name: Start OVS bridge network
+  community.libvirt.virt_net:
+    name: "{{ libvirt_ovs_network_name }}"
+    state: active
+
+- name: Autostart OVS bridge network
+  community.libvirt.virt_net:
+    name: "{{ libvirt_ovs_network_name }}"
+    autostart: true
+
 - name: Make mgmt-host IP persistent via nmcli
   community.general.nmcli:
     conn_name: "{{ ovs_mgmt_port }}"
