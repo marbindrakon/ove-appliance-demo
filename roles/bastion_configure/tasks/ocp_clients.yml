@@ -1,0 +1,35 @@
+---
+- name: Create bin directory for cloud-user
+  ansible.builtin.file:
+    path: /home/cloud-user/bin
+    state: directory
+    owner: cloud-user
+    group: cloud-user
+    mode: "0755"
+
+- name: Download and extract oc and kubectl
+  ansible.builtin.shell:
+    cmd: >
+      curl -sL
+      https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/{{ ocp_clients_version }}/openshift-client-linux.tar.gz
+      | tar xzf - -C /home/cloud-user/bin oc kubectl
+    creates: /home/cloud-user/bin/oc
+
+- name: Download and extract openshift-install
+  ansible.builtin.shell:
+    cmd: >
+      curl -sL
+      https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/{{ ocp_clients_version }}/openshift-install-linux.tar.gz
+      | tar xzf - -C /home/cloud-user/bin openshift-install
+    creates: /home/cloud-user/bin/openshift-install
+
+- name: Set ownership on OCP binaries
+  ansible.builtin.file:
+    path: "/home/cloud-user/bin/{{ item }}"
+    owner: cloud-user
+    group: cloud-user
+    mode: "0755"
+  loop:
+    - oc
+    - kubectl
+    - openshift-install

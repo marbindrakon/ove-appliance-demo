@@ -5,6 +5,10 @@
 #   sushy_port, sushy_username, sushy_password,
 #   sushy_blank_image, sushy_app_credential_id, sushy_app_credential_secret
 
+# OCP client binaries (oc, openshift-install) — version or channel for mirror.openshift.com
+# Examples: "stable-4.20", "latest-4.20", "4.20.18"
+ocp_clients_version: "stable-4.20"
+
 # NTP
 ntp_upstream_servers:
   - 0.rhel.pool.ntp.org

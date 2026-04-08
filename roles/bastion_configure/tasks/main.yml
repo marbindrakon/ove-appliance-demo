@@ -25,6 +25,9 @@
   ansible.builtin.include_tasks: sushy.yml
   when: infra_backend == 'openstack'
 
+- name: Install OCP client binaries (oc, openshift-install)
+  ansible.builtin.include_tasks: ocp_clients.yml
+
 - name: Set console password for cloud-user
   ansible.builtin.include_tasks: console_password.yml
   when: bastion_console_password | default('') | length > 0

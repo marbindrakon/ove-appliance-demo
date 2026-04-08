@@ -1,0 +1,155 @@
+#!/bin/bash
+# mount-config-iso.sh — Mount a config ISO to OVE nodes via Redfish virtual media
+#
+# Usage: ./mount-config-iso.sh <path-to-iso> [node-index ...]
+#   With no node indices, mounts to all {{ ove_node_count }} nodes.
+#   Examples:
+#     ./mount-config-iso.sh config.iso          # all nodes
+#     ./mount-config-iso.sh config.iso 0 2      # nodes 0 and 2 only
+
+set -euo pipefail
+
+ISO_PATH="${1:?Usage: $0 <path-to-iso> [node-index ...]}"
+shift
+
+{% if infra_backend == 'openstack' %}
+SUSHY_URL="http://localhost:{{ sushy_port }}"
+{% else %}
+SUSHY_URL="http://{{ kvm_host_mgmt_ip }}:{{ sushy_port }}"
+{% endif %}
+SUSHY_USER="{{ sushy_username }}"
+SUSHY_PASS="{{ sushy_password }}"
+SERVE_PORT=8888
+
+ALL_NODE_NAMES=(
+{% for idx in range(ove_node_count | int) %}
+  "{{ project_name }}-{{ ove_node_name_prefix }}-{{ idx }}"
+{% endfor %}
+)
+
+# Select nodes: specific indices from args, or all
+if [[ $# -gt 0 ]]; then
+    NODES=()
+    for idx in "$@"; do
+        if [[ "$idx" -ge {{ ove_node_count }} ]]; then
+            echo "Error: node index ${idx} out of range (0-{{ ove_node_count - 1 }})" >&2
+            exit 1
+        fi
+        NODES+=("${ALL_NODE_NAMES[$idx]}")
+    done
+else
+    NODES=("${ALL_NODE_NAMES[@]}")
+fi
+
+if [[ ! -f "$ISO_PATH" ]]; then
+    echo "Error: file not found: $ISO_PATH" >&2
+    exit 1
+fi
+
+# Discover Redfish VirtualMedia action URLs by walking the API links.
+# sushy-emulator identifies systems by libvirt/Nova UUID, and Manager IDs
+# may differ — so we resolve everything dynamically rather than guessing paths.
+echo "Discovering Redfish virtual media endpoints..."
+declare -A INSERT_URLS
+declare -A EJECT_URLS
+export SUSHY_URL SUSHY_USER SUSHY_PASS
+while IFS=$'\t' read -r name insert_url eject_url; do
+    INSERT_URLS["$name"]="$insert_url"
+    EJECT_URLS["$name"]="$eject_url"
+done < <(python3 << 'PYEOF'
+import urllib.request, json, base64, os, sys
+
+url = os.environ["SUSHY_URL"]
+creds = base64.b64encode(
+    f'{os.environ["SUSHY_USER"]}:{os.environ["SUSHY_PASS"]}'.encode()
+).decode()
+
+def get(path):
+    full = path if path.startswith("http") else f"{url}{path}"
+    req = urllib.request.Request(full)
+    req.add_header("Authorization", f"Basic {creds}")
+    return json.load(urllib.request.urlopen(req))
+
+for member in get("/redfish/v1/Systems/")["Members"]:
+    sys_path = member["@odata.id"]
+    sys_info = get(sys_path)
+    name = sys_info["Name"]
+
+    # Follow the ManagedBy link to find this system's Manager
+    managers = sys_info.get("Links", {}).get("ManagedBy", [])
+    if not managers:
+        print(f"WARNING: no Manager link for {name}", file=sys.stderr)
+        continue
+    mgr_info = get(managers[0]["@odata.id"])
+
+    # Follow the VirtualMedia link on the Manager
+    vmedia_ref = mgr_info.get("VirtualMedia", {}).get("@odata.id")
+    if not vmedia_ref:
+        print(f"WARNING: no VirtualMedia on Manager for {name}", file=sys.stderr)
+        continue
+
+    # Find the CD/DVD device in the VirtualMedia collection
+    for vm_member in get(vmedia_ref).get("Members", []):
+        vm_info = get(vm_member["@odata.id"])
+        media_types = vm_info.get("MediaTypes", [])
+        if "CD" in media_types or "DVD" in media_types or vm_member["@odata.id"].endswith("/Cd"):
+            actions = vm_info.get("Actions", {})
+            insert = actions.get("#VirtualMedia.InsertMedia", {}).get("target", "")
+            eject = actions.get("#VirtualMedia.EjectMedia", {}).get("target", "")
+            if insert:
+                print(f"{name}\t{insert}\t{eject}")
+            break
+PYEOF
+)
+
+ISO_PATH=$(realpath "$ISO_PATH")
+ISO_DIR=$(dirname "$ISO_PATH")
+ISO_FILE=$(basename "$ISO_PATH")
+
+# Serve the ISO via HTTP so sushy can fetch it
+python3 -m http.server "$SERVE_PORT" --bind {{ bastion_mgmt_ip }} --directory "$ISO_DIR" &>/dev/null &
+HTTP_PID=$!
+trap "kill $HTTP_PID 2>/dev/null" EXIT
+sleep 1
+
+IMAGE_URL="http://{{ bastion_mgmt_ip }}:${SERVE_PORT}/${ISO_FILE}"
+
+FAILED=0
+for node in "${NODES[@]}"; do
+    insert_url="${INSERT_URLS[$node]:-}"
+    eject_url="${EJECT_URLS[$node]:-}"
+    if [[ -z "$insert_url" ]]; then
+        echo "Mounting on ${node}... SKIP (not found in Redfish)"
+        FAILED=1
+        continue
+    fi
+
+    echo -n "Mounting on ${node}... "
+
+    # Eject any existing media first
+    if [[ -n "$eject_url" ]]; then
+        curl -sf -o /dev/null \
+            -u "${SUSHY_USER}:${SUSHY_PASS}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            "${SUSHY_URL}${eject_url}" 2>/dev/null || true
+    fi
+
+    # Insert new media
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+        -u "${SUSHY_USER}:${SUSHY_PASS}" \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "{\"Image\": \"${IMAGE_URL}\"}" \
+        "${SUSHY_URL}${insert_url}")
+
+    if [[ "$HTTP_CODE" =~ ^2 ]]; then
+        echo "OK"
+    else
+        echo "FAILED (HTTP ${HTTP_CODE})"
+        FAILED=1
+    fi
+done
+
+exit $FAILED

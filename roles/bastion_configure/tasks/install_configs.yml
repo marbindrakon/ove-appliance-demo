@@ -32,3 +32,11 @@
     owner: cloud-user
     group: cloud-user
     mode: "0644"
+
+- name: Template mount-config-iso helper script
+  ansible.builtin.template:
+    src: mount-config-iso.sh.j2
+    dest: /home/cloud-user/mount-config-iso.sh
+    owner: cloud-user
+    group: cloud-user
+    mode: "0755"

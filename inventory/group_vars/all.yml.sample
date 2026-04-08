@@ -49,6 +49,10 @@ bastion_disk_gb: 250
 bastion_mgmt_ip: "10.10.{{ lab_id | default(0) }}.1"
 bastion_console_password: ""  # Optional — enables password login for cloud-user (console/emergency access)
 
+# OCP client binaries installed on bastion (oc, openshift-install)
+# Version or channel from mirror.openshift.com — e.g., "stable-4.20", "latest-4.20", "4.20.18"
+ocp_clients_version: "stable-4.20"
+
 # OVE node VMs
 ove_node_flavor: "g1.4xlarge"
 ove_node_count: 4
