@@ -25,6 +25,10 @@
   ansible.builtin.include_tasks: sushy.yml
   when: infra_backend == 'openstack'
 
+- name: Set console password for cloud-user
+  ansible.builtin.include_tasks: console_password.yml
+  when: bastion_console_password | default('') | length > 0
+
 - name: Render appliance install configs
   ansible.builtin.include_tasks: install_configs.yml
   when: install_method == 'appliance'

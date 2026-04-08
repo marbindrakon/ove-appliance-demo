@@ -33,7 +33,6 @@
           --ssh-inject 'cloud-user:string:{{ ssh_public_key }}'
           --run-command 'echo "cloud-user ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/cloud-user'
           --run-command 'chmod 440 /etc/sudoers.d/cloud-user'
-          {{ ("--password 'cloud-user:password:" + bastion_console_password + "'") if bastion_console_password else "" }}
           --uninstall cloud-init
       no_log: "{{ not debug_mode | default(false) | bool }}"
       changed_when: true

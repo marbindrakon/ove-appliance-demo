@@ -47,6 +47,7 @@ bastion_flavor: "g1.large"
 bastion_image: "rhel-9.5"
 bastion_disk_gb: 250
 bastion_mgmt_ip: "10.10.{{ lab_id | default(0) }}.1"
+bastion_console_password: ""  # Optional — enables password login for cloud-user (console/emergency access)
 
 # OVE node VMs
 ove_node_flavor: "g1.4xlarge"
@@ -171,7 +172,6 @@ libvirt_pool_path: "/var/lib/libvirt/images/ove-demo"
 
 # Bastion RHEL qcow2 image (path on KVM host)
 bastion_qcow2_image: ""   # Must be set by operator — e.g., /var/lib/libvirt/images/rhel-9.5.qcow2
-bastion_console_password: ""  # Optional — enables password login for cloud-user (console/emergency access)
 
 # Bastion VM sizing (replaces bastion_flavor for libvirt)
 bastion_vcpus: 4

@@ -4,4 +4,3 @@ state: present
 bastion_vcpus: 4
 bastion_ram_mb: 8192
 bastion_disk_gb: 250
-bastion_console_password: ""  # Set to enable password login on the bastion console (for emergency access)
