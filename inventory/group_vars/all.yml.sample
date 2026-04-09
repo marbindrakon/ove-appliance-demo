@@ -58,6 +58,7 @@ ove_node_flavor: "g1.4xlarge"
 ove_node_count: 4
 ove_node_name_prefix: "ove-node"
 ove_node_disk_gb: 250
+ove_node_data_disk_gb: 250  # Two additional blank data disks per node for cluster storage
 # USB volume is pre-provisioned from the agent ISO — must be >= ISO size (agent ISO is ~41 GB)
 ove_usb_volume_gb: 50
 # Management IPs for OVE nodes — one per node, reserved via fixed IP on trunk0 parent port

@@ -39,3 +39,25 @@
     name: named
     state: started
     enabled: true
+
+- name: Disable NetworkManager resolv.conf management
+  ansible.builtin.copy:
+    dest: /etc/NetworkManager/conf.d/90-dns-none.conf
+    content: |
+      [main]
+      dns=none
+    mode: "0644"
+  register: _nm_dns_conf
+
+- name: Reload NetworkManager to apply DNS config
+  ansible.builtin.systemd:
+    name: NetworkManager
+    state: reloaded
+  when: _nm_dns_conf is changed
+
+- name: Configure resolv.conf to use local BIND
+  ansible.builtin.copy:
+    dest: /etc/resolv.conf
+    content: |
+      nameserver 127.0.0.1
+    mode: "0644"

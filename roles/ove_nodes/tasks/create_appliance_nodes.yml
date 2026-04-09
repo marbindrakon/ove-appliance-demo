@@ -14,6 +14,14 @@
     state: present
   loop: "{{ range(0, ove_node_count | int) | list }}"
 
+- name: Create appliance node data volumes
+  openstack.cloud.volume:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item.0 }}-data{{ item.1 }}"
+    size: "{{ ove_node_data_disk_gb }}"
+    state: present
+  loop: "{{ range(0, ove_node_count | int) | product(range(0, 2)) | list }}"
+
 - name: Create appliance node CD-ROM volumes for virtual media
   openstack.cloud.volume:
     cloud: "{{ demo_cloud_name }}"
@@ -36,6 +44,13 @@
     name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-cdrom"
   loop: "{{ range(0, ove_node_count | int) | list }}"
   register: cdrom_volume_facts
+
+- name: Gather appliance node data volume IDs
+  openstack.cloud.volume_info:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item.0 }}-data{{ item.1 }}"
+  loop: "{{ range(0, ove_node_count | int) | product(range(0, 2)) | list }}"
+  register: data_volume_facts
 
 - name: Check which appliance node VMs already exist
   ansible.builtin.command:
@@ -63,6 +78,10 @@
       - "uuid={{ boot_volume_facts.results[item | int].volumes[0].id }},source_type=volume,destination_type=volume,boot_index=0,device_type=disk,delete_on_termination=false"
       - "--block-device"
       - "uuid={{ cdrom_volume_facts.results[item | int].volumes[0].id }},source_type=volume,destination_type=volume,boot_index=1,device_type=cdrom,disk_bus=sata,delete_on_termination=false"
+      - "--block-device"
+      - "uuid={{ data_volume_facts.results[(item | int) * 2].volumes[0].id }},source_type=volume,destination_type=volume,boot_index=-1,device_type=disk,delete_on_termination=false"
+      - "--block-device"
+      - "uuid={{ data_volume_facts.results[(item | int) * 2 + 1].volumes[0].id }},source_type=volume,destination_type=volume,boot_index=-1,device_type=disk,delete_on_termination=false"
       - "--nic"
       - "port-id={{ hostvars[inventory_hostname]['trunk0_port_id_node' + item | string] }}"
       - "--nic"

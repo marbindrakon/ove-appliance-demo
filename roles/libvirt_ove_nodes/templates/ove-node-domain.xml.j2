@@ -27,6 +27,18 @@
       <boot order='2'/>
     </disk>
 {% endif %}
+    <!-- Data disk 0 -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2'/>
+      <source file='{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}-data0.qcow2'/>
+      <target dev='vdc' bus='virtio'/>
+    </disk>
+    <!-- Data disk 1 -->
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2'/>
+      <source file='{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}-data1.qcow2'/>
+      <target dev='vdd' bus='virtio'/>
+    </disk>
     <!-- NIC 1: trunk0 on OVS (VLAN config from ove-trunk portgroup) -->
     <interface type='network'>
       <source network='{{ libvirt_ovs_network_name }}' portgroup='ove-trunk'/>

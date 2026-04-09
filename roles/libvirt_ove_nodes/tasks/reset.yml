@@ -11,6 +11,22 @@
   loop: "{{ range(0, ove_node_count | int) | list }}"
   failed_when: false
 
+# --- Recreate blank data disks (both modes) ---
+- name: Delete existing data disks
+  ansible.builtin.file:
+    path: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item.0 }}-data{{ item.1 }}.qcow2"
+    state: absent
+  loop: "{{ range(0, ove_node_count | int) | product(range(0, 2)) | list }}"
+
+- name: Recreate blank data disks
+  ansible.builtin.command:
+    cmd: >
+      qemu-img create -f qcow2
+      {{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item.0 }}-data{{ item.1 }}.qcow2
+      {{ ove_node_data_disk_gb }}G
+  loop: "{{ range(0, ove_node_count | int) | product(range(0, 2)) | list }}"
+  changed_when: true
+
 # --- OVE mode: recreate blank boot disks ---
 - name: Delete existing boot disks (OVE mode)
   ansible.builtin.file:

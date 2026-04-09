@@ -23,6 +23,15 @@
     creates: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-boot.qcow2"
   loop: "{{ range(0, ove_node_count | int) | list }}"
 
+- name: Create blank data disks for appliance nodes
+  ansible.builtin.command:
+    cmd: >
+      qemu-img create -f qcow2
+      {{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item.0 }}-data{{ item.1 }}.qcow2
+      {{ ove_node_data_disk_gb }}G
+    creates: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item.0 }}-data{{ item.1 }}.qcow2"
+  loop: "{{ range(0, ove_node_count | int) | product(range(0, 2)) | list }}"
+
 - name: Define and start appliance node VMs
   ansible.builtin.include_tasks: define_node.yml
   loop: "{{ range(0, ove_node_count | int) | list }}"

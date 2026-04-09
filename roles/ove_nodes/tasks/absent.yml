@@ -15,6 +15,13 @@
     state: absent
   loop: "{{ range(0, ove_node_count | int) | list }}"
 
+- name: Delete OVE node data volumes
+  openstack.cloud.volume:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item.0 }}-data{{ item.1 }}"
+    state: absent
+  loop: "{{ range(0, ove_node_count | int) | product(range(0, 2)) | list }}"
+
 - name: Delete OVE node USB volumes
   openstack.cloud.volume:
     cloud: "{{ demo_cloud_name }}"

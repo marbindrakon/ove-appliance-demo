@@ -16,6 +16,14 @@
     state: present
   loop: "{{ range(0, ove_node_count | int) | list }}"
 
+- name: Create OVE node data volumes
+  openstack.cloud.volume:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item.0 }}-data{{ item.1 }}"
+    size: "{{ ove_node_data_disk_gb }}"
+    state: present
+  loop: "{{ range(0, ove_node_count | int) | product(range(0, 2)) | list }}"
+
 - name: Create OVE node USB volumes from agent ISO
   openstack.cloud.volume:
     cloud: "{{ demo_cloud_name }}"
@@ -38,6 +46,13 @@
     name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item }}-volume"
   loop: "{{ range(0, ove_node_count | int) | list }}"
   register: boot_volume_facts
+
+- name: Gather OVE node data volume IDs
+  openstack.cloud.volume_info:
+    cloud: "{{ demo_cloud_name }}"
+    name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ item.0 }}-data{{ item.1 }}"
+  loop: "{{ range(0, ove_node_count | int) | product(range(0, 2)) | list }}"
+  register: data_volume_facts
 
 - name: Check which OVE node VMs already exist
   ansible.builtin.command:
@@ -65,6 +80,10 @@
       - "uuid={{ boot_volume_facts.results[item | int].volumes[0].id }},source_type=volume,destination_type=volume,boot_index=0,device_type=disk,delete_on_termination=false"
       - "--block-device"
       - "uuid={{ usb_volume_facts.results[item | int].volumes[0].id }},source_type=volume,destination_type=volume,boot_index=1,device_type=disk,disk_bus=virtio,delete_on_termination=false"
+      - "--block-device"
+      - "uuid={{ data_volume_facts.results[(item | int) * 2].volumes[0].id }},source_type=volume,destination_type=volume,boot_index=-1,device_type=disk,delete_on_termination=false"
+      - "--block-device"
+      - "uuid={{ data_volume_facts.results[(item | int) * 2 + 1].volumes[0].id }},source_type=volume,destination_type=volume,boot_index=-1,device_type=disk,delete_on_termination=false"
       - "--nic"
       - "port-id={{ hostvars[inventory_hostname]['trunk0_port_id_node' + item | string] }}"
       - "--nic"

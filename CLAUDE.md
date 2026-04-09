@@ -88,6 +88,8 @@ teardown.yml and reset-ove-nodes.yml call the same roles with state: absent or s
 
 **Shared variables**: All cross-role libvirt variables (OVS names, MAC prefixes, NAT network config, dnsmasq/sushy service paths) are defined in `group_vars/all.yml` and derived from `lab_id`. Role `defaults/main.yml` files only contain role-private variables.
 
+**Data disks**: Every OVE node gets two additional blank volumes (`ove_node_data_disk_gb`, default 250 GB) for use by provisioned clusters (e.g., ODF/Ceph). OpenStack: Cinder volumes with `boot_index=-1`; libvirt: qcow2 images at `vdc`/`vdd`. Teardown deletes them; libvirt reset recreates them blank.
+
 **Boot flow (OVE mode)**: Each OVE node has two volumes. `boot_index=0` is a blank root volume (no bootloader); `boot_index=1` is a virtio USB volume pre-provisioned from the agent ISO. On first boot the VM lands in the UEFI shell (unintended but retained — it gives the operator a chance to intervene). The operator must enter UEFI config and select the USB device to launch the agent installer. The installer writes OCP to the root volume; subsequent reboots come up from root. No `nova rebuild` required.
 
 **Boot flow (appliance mode)**: Each node has a single boot volume (`boot_index=0`) from the pre-built `appliance.raw` image plus a blank CD-ROM volume (`boot_index=1`, `device_type=cdrom`, `disk_bus=sata`) for sushy virtual media delivery of configuration ISOs. The appliance boots directly into the agent installer with no UEFI intervention. The appliance image is built on the bastion using `podman` with the `openshift-appliance` container and uploaded to Glance via the demo project's sushy credential by the `appliance_image` role.
@@ -102,7 +104,7 @@ teardown.yml and reset-ove-nodes.yml call the same roles with state: absent or s
 
 **`openstack.cloud.trunk` bug**: The module silently ignores `sub_ports` on creation. `create_trunk.yml` calls it twice (create then update) and uses port *names* not IDs — the update path matches by `sp['name'] == k['port']`.
 
-**DNS**: Bastion subnet and bastion-mgmt-port `extra_dhcp_opts` both advertise `dns_forwarders` (not the bastion itself) so BIND isn't needed before subscription. Mgmt subnet advertises `bastion_mgmt_ip` as nameserver for OVE nodes. BIND on the bastion is authoritative for `base_domain` and forwards everything else.
+**DNS**: Bastion subnet and bastion-mgmt-port `extra_dhcp_opts` both advertise `dns_forwarders` (not the bastion itself) so BIND isn't needed before subscription. Mgmt subnet advertises `bastion_mgmt_ip` as nameserver for OVE nodes. BIND on the bastion is authoritative for `base_domain` and forwards everything else. After BIND starts, the bastion's own resolv.conf is pointed to `127.0.0.1` by disabling NetworkManager's resolv.conf management (`/etc/NetworkManager/conf.d/90-dns-none.conf`).
 
 **Sushy-emulator placement**: In OpenStack mode, sushy runs on the bastion with the OpenStack driver. In libvirt mode, sushy runs on the KVM host with the libvirt driver (`qemu:///system`), reachable at `10.10.{lab_id}.254:{8000+lab_id}` via the OVS `l{lab_id}-mgmt` internal port. The `bastion_configure` role conditionally skips sushy setup when `infra_backend == 'libvirt'`. Sushy uses `sushy_port: {{ 8000 + lab_id }}` (unified expression that works for both backends since lab_id defaults to 0).
 
