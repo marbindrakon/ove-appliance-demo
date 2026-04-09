@@ -32,6 +32,15 @@
   ansible.builtin.include_tasks: console_password.yml
   when: bastion_console_password | default('') | length > 0
 
+- name: Render fake pull secret for disconnected installation
+  ansible.builtin.copy:
+    dest: /home/cloud-user/fake-pull-secret.json
+    owner: cloud-user
+    group: cloud-user
+    mode: "0600"
+    content: |
+      {"auths":{"fake":{"auth":"dW5zZXQ6dW5zZXQ="}}}
+
 - name: Render appliance install configs
   ansible.builtin.include_tasks: install_configs.yml
   when: install_method == 'appliance'

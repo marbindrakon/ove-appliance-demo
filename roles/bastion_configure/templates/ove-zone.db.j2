@@ -10,6 +10,11 @@ $TTL 86400
 @           IN  NS  bastion.{{ base_domain }}.
 bastion     IN  A   {{ bastion_mgmt_ip }}
 
+; OVE nodes
+{% for idx in range(0, ove_node_count | int) %}
+{{ ove_node_name_prefix }}-{{ idx }}     IN  A   {{ ove_node_mgmt_ips[idx] }}
+{% endfor %}
+
 ; OVE cluster endpoints
 api.{{ cluster_name }}          IN  A   {{ api_vip }}
 *.apps.{{ cluster_name }}       IN  A   {{ ingress_vip }}

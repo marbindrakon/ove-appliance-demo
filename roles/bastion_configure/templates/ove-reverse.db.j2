@@ -10,4 +10,7 @@ $TTL 86400
 @   IN  NS  bastion.{{ base_domain }}.
 
 {{ bastion_mgmt_ip | ansible.utils.ipaddr('revdns') | regex_replace('\\..*$', '') }}  IN  PTR  bastion.{{ base_domain }}.
+{% for idx in range(0, ove_node_count | int) %}
+{{ ove_node_mgmt_ips[idx] | ansible.utils.ipaddr('revdns') | regex_replace('\\..*$', '') }}  IN  PTR  {{ ove_node_name_prefix }}-{{ idx }}.{{ base_domain }}.
+{% endfor %}
 {{ api_vip | ansible.utils.ipaddr('revdns') | regex_replace('\\..*$', '') }}           IN  PTR  api.{{ cluster_name }}.{{ base_domain }}.

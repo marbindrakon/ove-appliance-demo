@@ -1,9 +1,10 @@
 ---
-- name: Install BIND
+- name: Install BIND and nmstate
   ansible.builtin.dnf:
     name:
       - bind
       - bind-utils
+      - nmstate
     state: present
 
 - name: Deploy named.conf
