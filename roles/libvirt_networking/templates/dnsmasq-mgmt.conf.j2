@@ -19,3 +19,6 @@ dhcp-host={{ node.mac }},{{ node.ip }},infinite
 
 # DNS server option — point to bastion
 dhcp-option=option:dns-server,{{ bastion_mgmt_ip }}
+
+# NTP server option — point to bastion chrony
+dhcp-option=option:ntp-server,{{ bastion_mgmt_ip }}

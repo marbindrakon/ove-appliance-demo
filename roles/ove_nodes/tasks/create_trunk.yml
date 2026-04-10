@@ -14,7 +14,7 @@
     network: "{{ project_name }}-mgmt"
     port_security_enabled: false
     fixed_ips: "{{ [{'ip_address': ove_node_mgmt_ips[node_idx | int]}] if trunk_idx | int == 0 else [] }}"
-    extra_dhcp_opts: "{{ [{'opt_name': 'lease-time', 'opt_value': '4294967295'}] if trunk_idx | int == 0 else omit }}"
+    extra_dhcp_opts: "{{ [{'opt_name': 'lease-time', 'opt_value': '4294967295'}, {'opt_name': 'ntp-server', 'opt_value': bastion_mgmt_ip}] if trunk_idx | int == 0 else omit }}"
     state: present
   register: parent_port
 
