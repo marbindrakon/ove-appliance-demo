@@ -23,6 +23,8 @@
   hosts: localhost
   connection: local
   gather_facts: false
+  environment:
+    OS_CLIENT_CONFIG_FILE: "{{ cache_dir }}/clouds.yaml"
   roles:
     - role: ove_nodes
       vars:
