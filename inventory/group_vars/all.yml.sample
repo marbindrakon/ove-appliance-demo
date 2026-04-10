@@ -189,12 +189,16 @@ ove_node_ram_mb: 65536
 # SSH public key content for cloud-init injection (libvirt mode)
 ssh_public_key: ""  # Must be set by operator — e.g., contents of ~/.ssh/id_ed25519.pub
 
+# MAC prefix for OVE node ports — derived from lab_id for uniqueness across labs.
+# Used to pin port MACs on both OpenStack and libvirt backends, enabling agent-config.yaml
+# to be pre-populated with correct MAC addresses before node creation.
+mac_prefix: "52:54:00:{{ '%02x' | format(lab_id | int) }}"
+
 # Auto-derived libvirt network and MAC address resources (based on lab_id)
 ovs_bridge_name: "br-ove-{{ lab_id }}"
 ovs_mgmt_port: "l{{ lab_id }}-mgmt"
 ovs_bastion_port: "l{{ lab_id }}-bst"
 kvm_host_mgmt_ip: "10.10.{{ lab_id }}.254"
-mac_prefix: "52:54:00:{{ '%02x' | format(lab_id | int) }}"
 bastion_mgmt_mac: "{{ mac_prefix }}:00:01"
 bastion_nat_mac: "52:54:00:00:{{ '%02x' | format(lab_id | int) }}:10"
 

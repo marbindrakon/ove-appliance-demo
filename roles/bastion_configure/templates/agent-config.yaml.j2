@@ -16,17 +16,9 @@ hosts:
     role: {{ role }}
     interfaces:
       - name: trunk0
-{% if infra_backend == 'libvirt' %}
         macAddress: "{{ mac_prefix }}:01:{{ '%02x' | format(idx + 11) }}"
-{% else %}
-        macAddress: "FIXME"  # Update with actual trunk0 MAC after node creation
-{% endif %}
       - name: trunk1
-{% if infra_backend == 'libvirt' %}
         macAddress: "{{ mac_prefix }}:02:{{ '%02x' | format(idx + 11) }}"
-{% else %}
-        macAddress: "FIXME"  # Update with actual trunk1 MAC after node creation
-{% endif %}
     networkConfig:
       interfaces:
         - name: trunk0
