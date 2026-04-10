@@ -1,16 +1,46 @@
 #!/bin/bash
-# mount-config-iso.sh — Mount a config ISO to OVE nodes via Redfish virtual media
+# mount-config-iso.sh — Mount/eject a config ISO on OVE nodes via Redfish virtual media
 #
-# Usage: ./mount-config-iso.sh <path-to-iso> [node-index ...]
-#   With no node indices, mounts to all {{ ove_node_count }} nodes.
-#   Examples:
-#     ./mount-config-iso.sh config.iso          # all nodes
-#     ./mount-config-iso.sh config.iso 0 2      # nodes 0 and 2 only
+# Usage: ./mount-config-iso.sh [--eject] [--reset] [path-to-iso] [node-index ...]
+#
+# Options:
+#   --eject   Eject virtual media instead of mounting (path-to-iso not required)
+#   --reset   Send a Redfish ForceRestart after mounting or ejecting
+#
+# With no node indices, operates on all {{ ove_node_count }} nodes.
+# Examples:
+#   ./mount-config-iso.sh config.iso           # mount to all nodes
+#   ./mount-config-iso.sh config.iso 0 2       # mount to nodes 0 and 2
+#   ./mount-config-iso.sh --eject              # eject from all nodes
+#   ./mount-config-iso.sh --eject 1            # eject from node 1
+#   ./mount-config-iso.sh --reset config.iso   # mount and reset all nodes
 
 set -euo pipefail
 
-ISO_PATH="${1:?Usage: $0 <path-to-iso> [node-index ...]}"
-shift
+EJECT=false
+RESET=false
+POSITIONAL=()
+
+for arg in "$@"; do
+    case "$arg" in
+        --eject) EJECT=true ;;
+        --reset) RESET=true ;;
+        --*) echo "Unknown option: $arg" >&2; exit 1 ;;
+        *) POSITIONAL+=("$arg") ;;
+    esac
+done
+
+if [[ "$EJECT" == false ]]; then
+    if [[ -z "${POSITIONAL[0]:-}" ]]; then
+        echo "Usage: $0 [--eject] [--reset] <path-to-iso> [node-index ...]" >&2
+        exit 1
+    fi
+    ISO_PATH="${POSITIONAL[0]}"
+    NODE_ARGS=("${POSITIONAL[@]:1}")
+else
+    ISO_PATH=""
+    NODE_ARGS=("${POSITIONAL[@]+"${POSITIONAL[@]}"}")
+fi
 
 {% if infra_backend == 'openstack' %}
 SUSHY_URL="http://localhost:{{ sushy_port }}"
@@ -28,9 +58,9 @@ ALL_NODE_NAMES=(
 )
 
 # Select nodes: specific indices from args, or all
-if [[ $# -gt 0 ]]; then
+if [[ -n "${NODE_ARGS[0]:-}" ]]; then
     NODES=()
-    for idx in "$@"; do
+    for idx in "${NODE_ARGS[@]}"; do
         if [[ "$idx" -ge {{ ove_node_count }} ]]; then
             echo "Error: node index ${idx} out of range (0-{{ ove_node_count - 1 }})" >&2
             exit 1
@@ -41,7 +71,7 @@ else
     NODES=("${ALL_NODE_NAMES[@]}")
 fi
 
-if [[ ! -f "$ISO_PATH" ]]; then
+if [[ "$EJECT" == false && ! -f "$ISO_PATH" ]]; then
     echo "Error: file not found: $ISO_PATH" >&2
     exit 1
 fi
@@ -52,10 +82,12 @@ fi
 echo "Discovering Redfish virtual media endpoints..."
 declare -A INSERT_URLS
 declare -A EJECT_URLS
+declare -A RESET_URLS
 export SUSHY_URL SUSHY_USER SUSHY_PASS
-while IFS=$'\t' read -r name insert_url eject_url; do
+while IFS=$'\t' read -r name insert_url eject_url reset_url; do
     INSERT_URLS["$name"]="$insert_url"
     EJECT_URLS["$name"]="$eject_url"
+    RESET_URLS["$name"]="$reset_url"
 done < <(python3 << 'PYEOF'
 import urllib.request, json, base64, os, sys
 
@@ -74,6 +106,9 @@ for member in get("/redfish/v1/Systems/")["Members"]:
     sys_path = member["@odata.id"]
     sys_info = get(sys_path)
     name = sys_info["Name"]
+
+    # System reset action URL
+    reset_url = sys_info.get("Actions", {}).get("#ComputerSystem.Reset", {}).get("target", "")
 
     # Follow the ManagedBy link to find this system's Manager
     managers = sys_info.get("Links", {}).get("ManagedBy", [])
@@ -96,59 +131,106 @@ for member in get("/redfish/v1/Systems/")["Members"]:
             actions = vm_info.get("Actions", {})
             insert = actions.get("#VirtualMedia.InsertMedia", {}).get("target", "")
             eject = actions.get("#VirtualMedia.EjectMedia", {}).get("target", "")
-            if insert:
-                print(f"{name}\t{insert}\t{eject}")
+            if insert or eject:
+                print(f"{name}\t{insert}\t{eject}\t{reset_url}")
             break
 PYEOF
 )
 
-ISO_PATH=$(realpath "$ISO_PATH")
-ISO_DIR=$(dirname "$ISO_PATH")
-ISO_FILE=$(basename "$ISO_PATH")
+if [[ "$EJECT" == false ]]; then
+    ISO_PATH=$(realpath "$ISO_PATH")
+    ISO_DIR=$(dirname "$ISO_PATH")
+    ISO_FILE=$(basename "$ISO_PATH")
 
-# Serve the ISO via HTTP so sushy can fetch it
-python3 -m http.server "$SERVE_PORT" --bind {{ bastion_mgmt_ip }} --directory "$ISO_DIR" &>/dev/null &
-HTTP_PID=$!
-trap "kill $HTTP_PID 2>/dev/null" EXIT
-sleep 1
+    # Serve the ISO via HTTP so sushy can fetch it
+    python3 -m http.server "$SERVE_PORT" --bind {{ bastion_mgmt_ip }} --directory "$ISO_DIR" &>/dev/null &
+    HTTP_PID=$!
+    trap "kill $HTTP_PID 2>/dev/null" EXIT
+    sleep 1
 
-IMAGE_URL="http://{{ bastion_mgmt_ip }}:${SERVE_PORT}/${ISO_FILE}"
+    IMAGE_URL="http://{{ bastion_mgmt_ip }}:${SERVE_PORT}/${ISO_FILE}"
+fi
 
 FAILED=0
 for node in "${NODES[@]}"; do
     insert_url="${INSERT_URLS[$node]:-}"
     eject_url="${EJECT_URLS[$node]:-}"
-    if [[ -z "$insert_url" ]]; then
-        echo "Mounting on ${node}... SKIP (not found in Redfish)"
-        FAILED=1
-        continue
-    fi
+    reset_url="${RESET_URLS[$node]:-}"
 
-    echo -n "Mounting on ${node}... "
-
-    # Eject any existing media first
-    if [[ -n "$eject_url" ]]; then
-        curl -sf -o /dev/null \
+    if [[ "$EJECT" == true ]]; then
+        echo -n "Ejecting from ${node}... "
+        if [[ -z "$eject_url" ]]; then
+            echo "SKIP (not found in Redfish)"
+            FAILED=1
+            continue
+        fi
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
             -u "${SUSHY_USER}:${SUSHY_PASS}" \
             -X POST \
             -H "Content-Type: application/json" \
             -d '{}' \
-            "${SUSHY_URL}${eject_url}" 2>/dev/null || true
+            "${SUSHY_URL}${eject_url}")
+        if [[ "$HTTP_CODE" =~ ^2 ]]; then
+            echo "OK"
+        else
+            echo "FAILED (HTTP ${HTTP_CODE})"
+            FAILED=1
+            continue
+        fi
+    else
+        if [[ -z "$insert_url" ]]; then
+            echo "${node}: SKIP (not found in Redfish)"
+            FAILED=1
+            continue
+        fi
+
+        echo -n "Mounting on ${node}... "
+
+        # Eject any existing media first
+        if [[ -n "$eject_url" ]]; then
+            curl -sf -o /dev/null \
+                -u "${SUSHY_USER}:${SUSHY_PASS}" \
+                -X POST \
+                -H "Content-Type: application/json" \
+                -d '{}' \
+                "${SUSHY_URL}${eject_url}" 2>/dev/null || true
+        fi
+
+        # Insert new media
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -u "${SUSHY_USER}:${SUSHY_PASS}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"Image\": \"${IMAGE_URL}\"}" \
+            "${SUSHY_URL}${insert_url}")
+
+        if [[ "$HTTP_CODE" =~ ^2 ]]; then
+            echo "OK"
+        else
+            echo "FAILED (HTTP ${HTTP_CODE})"
+            FAILED=1
+            continue
+        fi
     fi
 
-    # Insert new media
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-        -u "${SUSHY_USER}:${SUSHY_PASS}" \
-        -X POST \
-        -H "Content-Type: application/json" \
-        -d "{\"Image\": \"${IMAGE_URL}\"}" \
-        "${SUSHY_URL}${insert_url}")
-
-    if [[ "$HTTP_CODE" =~ ^2 ]]; then
-        echo "OK"
-    else
-        echo "FAILED (HTTP ${HTTP_CODE})"
-        FAILED=1
+    if [[ "$RESET" == true ]]; then
+        echo -n "Resetting ${node}... "
+        if [[ -z "$reset_url" ]]; then
+            echo "SKIP (no reset action in Redfish)"
+        else
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                -u "${SUSHY_USER}:${SUSHY_PASS}" \
+                -X POST \
+                -H "Content-Type: application/json" \
+                -d '{"ResetType": "On"}' \
+                "${SUSHY_URL}${reset_url}")
+            if [[ "$HTTP_CODE" =~ ^2 ]]; then
+                echo "OK"
+            else
+                echo "FAILED (HTTP ${HTTP_CODE})"
+                FAILED=1
+            fi
+        fi
     fi
 done
 

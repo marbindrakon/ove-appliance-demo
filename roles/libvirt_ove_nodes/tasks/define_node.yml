@@ -19,3 +19,4 @@
   community.libvirt.virt:
     name: "{{ project_name }}-{{ ove_node_name_prefix }}-{{ node_idx }}"
     state: running
+  when: _start_domain | default(true)

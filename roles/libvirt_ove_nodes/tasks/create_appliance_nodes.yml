@@ -32,7 +32,7 @@
     creates: "{{ libvirt_pool_path }}/{{ project_name }}-{{ ove_node_name_prefix }}-{{ item.0 }}-data{{ item.1 }}.qcow2"
   loop: "{{ range(0, ove_node_count | int) | product(range(0, 2)) | list }}"
 
-- name: Define and start appliance node VMs
+- name: Define appliance node VMs (powered off — boot after mounting config ISO)
   ansible.builtin.include_tasks: define_node.yml
   loop: "{{ range(0, ove_node_count | int) | list }}"
   loop_control:
@@ -40,3 +40,4 @@
   vars:
     _boot_disk_format: qcow2
     _boot_disk_ext: qcow2
+    _start_domain: false
