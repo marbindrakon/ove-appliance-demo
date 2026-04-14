@@ -18,6 +18,33 @@ appliance_operators:
       - name: odf-operator
         channels:
           - name: stable-4.20
+      - name: cephcsi-operator
+        channels:
+          - name: stable-4.20
+      - name: mcg-operator
+        channels:
+          - name: stable-4.20
+      - name: ocs-client-operator
+        channels:
+          - name: stable-4.20
+      - name: ocs-operator
+        channels:
+          - name: stable-4.20
+      - name: odf-csi-addons-operator
+        channels:
+          - name: stable-4.20
+      - name: odf-prometheus-operator
+        channels:
+          - name: stable-4.20
+      - name: odf-external-snapshotter-operator
+        channels:
+          - name: stable-4.20
+      - name: recipe
+        channels:
+          - name: stable-4.20
+      - name: rook-ceph-operator
+        channels:
+          - name: stable-4.20
       - name: odf-dependencies
         channels:
           - name: stable-4.20
@@ -34,7 +61,6 @@ appliance_operators:
       - name: local-storage-operator
       - name: kubernetes-nmstate-operator
       - name: kubevirt-hyperconverged
-      - name: cluster-observability-operator
       - name: fence-agents-remediation
 appliance_additional_images:
   - name: registry.redhat.io/rhel10/rhel-guest-image:latest
